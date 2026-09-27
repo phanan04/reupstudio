@@ -1,0 +1,15 @@
+# The HTTP app and SQLite remain native. No published ports or shared DB volume.
+services:
+  opus:
+    image: vietstudio-opus:local
+    build:
+      context: .
+      dockerfile: docker/opus.Dockerfile
+    network_mode: none
+    # The app starts one short-lived container per job with explicit bind mounts.
+    profiles: [opus]
+  test:
+    build:
+      context: .
+      dockerfile: docker/test.Dockerfile
+    profiles: [test]

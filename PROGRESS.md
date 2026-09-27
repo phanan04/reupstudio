@@ -1,6 +1,41 @@
 # Bàn giao Việt Studio
 
-Cập nhật: 2026-09-27. Repository: https://github.com/phanan04/reupstudio, nhánh `main`.
+## Cập nhật đa nền tảng — 2026-09-27
+
+Repository: https://github.com/phanan04/reupstudio. Nhánh triển khai: `codex/cross-platform-runtime`. Đọc phần này trước lịch sử laptop bên dưới. Kiểm tra `git status`/remote để biết thay đổi đã commit/push, không suy ra trạng thái Git từ tài liệu.
+
+### Đã làm
+- Giữ HTTP Node 24 + SQLite, frontend thuần và pipeline video/SRT/dịch/duyệt/xuất; không thay kiến trúc hoặc sửa dữ liệu người dùng.
+- `npm start` dùng launcher chung Windows/macOS; đọc .env, kiểm tra cổng/dữ liệu trước khi mở Store, đọc DB cấu hình dạng read-only và tái sử dụng Ollama đang chạy. Chỉ dọn Ollama do launcher tạo.
+- `server/runtime.mjs`: đường dẫn tương đối theo repo root, tìm portable tools hoặc PATH, resolve trước subprocess kể cả cwd trong thư mục tập. DB cũ không bị tự ghi đè; configure-local chủ động backup SQLite rồi cập nhật đường dẫn, giữ bộ dịch/cues/cấu hình khác.
+- `.server.lock` bảo vệ một DB khỏi hai server, kể cả khác cổng. Dữ liệu trên mỗi máy vẫn ở `data/`, bền vững qua restart/Git pull. Không đồng bộ DB bằng Git.
+- Setup Python 3.12 theo OS, không tải .exe trên Mac; startup sync dependencies theo fingerprint nếu venv đã có. Thêm version files, package-lock, .env.example, .gitattributes và ignore database/secrets/artifacts.
+- Mac Intel dùng ONNX Runtime 1.23.2 (1.30.0 không có wheel Intel); loại bỏ cài chồng hai gói cv2. Không downgrade PyTorch: OPUS Mac Intel dùng Docker CPU, OCR/TTS vẫn native. Windows/Apple Silicon mặc định OPUS native.
+- Dockerfile OPUS, Dockerfile kiểm thử và Compose tùy chọn. OPUS tự build theo fingerprint source/lock/worker; suy luận network=none, model read-only, checkpoint ghi vào thư mục job trên host, dọn đúng container khi kết thúc/hủy. Docker không chứa HTTP server/DB hoặc dữ liệu riêng.
+- README, AGENTS, ARCHITECTURE, TRANSLATION được cập nhật; hướng dẫn Git/chuyển data và hướng dẫn sử dụng ở docs/. Git local đã đặt pull.ff=only, fetch.prune=true, push.default=simple trên clone hiện tại; clone khác chạy npm run git:setup.
+- CI: Node Windows/macOS Intel/macOS ARM/Linux, Python imports Windows/macOS, build Docker và OPUS --help trên Linux. Chưa coi workflow có trong source là CI đã chạy.
+
+### Kiểm chứng tại phiên này
+- Máy thực: macOS Intel, RAM 16 GB, Radeon RX 5600 XT 6 GB theo system profiler. Không suy ra GPU backend đã hoạt động.
+- Node 24.19.0 dùng runtime có sẵn của môi trường phát triển; npm CLI dùng bản kiểm thử trong thư mục tạm. Máy chưa có node/npm trên PATH hệ thống.
+- `npm ci --ignore-scripts` thành công; `npm run check` thành công; toàn bộ **27/27 test đạt**, gồm test migration backup/giữ dữ liệu. Lần xác nhận cuối dùng node scripts/test.mjs trực tiếp vì npm CLI tạm đã được dọn.
+- Test API/launcher dùng DB riêng: đọc .env, chạy từ cwd khác, dữ liệu còn nguyên sau restart, từ chối startup trùng; relative paths/OPUS mount và backup cấu hình có kiểm thử.
+- Python 3.12: resolve lock thành công; cài trong venv tạm, pip check không có lỗi; import Piper/RapidOCR/ONNX/OpenCV/yt-dlp thành công. Không tạo/copy venv vào dự án người dùng, không tải model/video lớn.
+- Metadata PyPI xác nhận wheel Python 3.12 của torch 2.8.0, ONNX Runtime 1.30.0 và OpenCV cho Windows x64/Mac ARM; đây không thay thế test chạy thật.
+- YAML Compose/CI parse được; Start.command kiểm tra shell syntax; git diff --check sạch.
+
+### Chưa kiểm chứng / bước tiếp theo
+- Thay đổi đã commit trên nhánh `codex/cross-platform-runtime`; danh tính Git đã được người dùng cung cấp và cấu hình riêng repo. **Chưa push**: push dry-run bị chặn vì HTTPS GitHub chưa đăng nhập. Cần đăng nhập tài khoản có quyền push trên máy (không gửi token qua chat), rồi `git push -u origin codex/cross-platform-runtime`. `main`/remote chưa đổi.
+- Máy hiện chưa có Docker CLI/Desktop: chưa build/run container thật. CI chưa được xác nhận chạy; Windows và Mac ARM chưa có kiểm chứng runtime trong phiên này.
+- Chưa benchmark AMD/Vulkan/Metal/AMF, chưa render hoặc suy luận model thật trên máy hiện tại. Import Python thành công không chứng nhận chất lượng OCR/TTS/OPUS.
+- Cài Node 24 (kèm npm) trên PATH và công cụ native/model theo README trên từng máy. Sau cài lần đầu: git pull --ff-only, rồi npm start.
+- Nếu cần OPUS trên Mac Intel: cài/mở Docker Desktop; image build tự động lần đầu. Kiểm tra suy luận SRT ngắn và cancellation với checkpoint trên máy có Docker trước xử lý dài.
+- Kiểm tra GitHub Actions trên đúng commit đã push, rồi thử SRT ngắn và pipeline video trên Windows. Không chuyển hoặc thay DB thật để thử phá hủy.
+- Media tools/models vẫn dùng installer release discovery + checksum/source marker như trước; chưa khóa toàn bộ binary theo một manifest duy nhất.
+
+## Lịch sử bàn giao Windows (giữ để tham khảo)
+
+Bản bàn giao trước nâng cấp đa nền tảng, ngày 2026-09-27; mô tả máy Windows cũ.
 
 ## Mục tiêu và ưu tiên đã thống nhất
 Ứng dụng local Windows Việt hóa video Trung–Việt. Ưu tiên video tải lên và luồng CapCut xuất SRT → nhập SRT → dịch → duyệt/chỉnh sửa → xuất SRT. Giao diện một khung như trình biên tập video. Phần cứng đích RX 5600 XT 6 GB; máy phát triển laptop Intel Iris Xe, không phải máy AMD.

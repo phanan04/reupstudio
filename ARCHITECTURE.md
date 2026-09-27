@@ -49,3 +49,11 @@ Không dùng dịch vụ có phí; không đưa video/phụ đề lên cloud. Kh
 ## Nâng cấp dịch ngữ cảnh (27/09/2026)
 
 Giữ pipeline video và SQLite; thêm `knowledge.mjs` (glossary, nhân vật, TM đã duyệt, BM25 RAG), `ai-provider.mjs` (Ollama/llama.cpp/API), `translation.mjs` (context batching, checkpoint, quality review). Chế độ hàng đợi translate/quality chạy chỉ từ cues, không cần video. Xem TRANSLATION.md cho mô hình dữ liệu, phạm vi truy xuất và giới hạn.
+
+## Runtime đa nền tảng (27/09/2026)
+
+Server/frontend/SQLite tiếp tục native trên localhost. `server/runtime.mjs` đọc .env, phát hiện portable/PATH, tách cấu hình tương đối lưu trong DB khỏi đường dẫn tuyệt đối chỉ dùng lúc chạy subprocess. `scripts/start.mjs` đọc settings bằng SQLite read-only; `server/data-lock.mjs` ngăn cùng dữ liệu bị hai server mở. Data dir mặc định `./data`, không theo cwd của terminal.
+
+Ollama đã chạy được tái sử dụng; launcher chỉ quản lý tiến trình nó tạo. Python dependencies được sync theo fingerprint khi venv có sẵn. Windows tải binary portable như trước; macOS dùng native tools trên PATH và chỉ tải model chung. Không có npm runtime dependency hoặc bước frontend build.
+
+Ngoại lệ OPUS Mac Intel: Node gọi Docker CLI thay Python native, vẫn dùng `workers/translate_opus.py`, ID và checkpoint hiện có. Image CPU không chứa model hoặc dữ liệu riêng. Model mount read-only, thư mục tập mount read-write; suy luận không có mạng. Sau hủy/lỗi, dọn container theo UUID của tác vụ. App/SQLite không chuyển vào container. Xem README và docs/DEVELOPMENT.md cho cài đặt, lockfiles và Git workflow.

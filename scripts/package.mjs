@@ -18,8 +18,19 @@ for (const name of [
   "TRANSLATION.md",
   "TRANSLATION-QUALITY.md",
   "requirements.lock.txt",
+  "requirements-opus.lock.txt",
   "package.json",
+  "package-lock.json",
+  ".env.example",
+  ".node-version",
+  ".python-version",
+  ".gitattributes",
+  ".dockerignore",
+  "compose.yaml",
+  "docker",
+  "docs",
   "Start.cmd",
+  "Start.command",
   "Setup.cmd",
   ".gitignore",
 ])
@@ -41,5 +52,5 @@ if (process.argv.includes("--with-models")) {
 console.log(
   "Transfer folder: " +
     target +
-    "\nNo personal projects, cookies, or virtual environment copied. Run Setup.cmd on the target PC.",
+    "\nNo personal projects, cookies, or virtual environment copied. Tools are OS-specific; run npm run setup on the target machine.",
 );

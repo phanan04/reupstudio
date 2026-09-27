@@ -1,7 +1,8 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import { existsSync, readFileSync } from "node:fs";
-import { hash, run, validateCues } from "./core.mjs";
+import { hash, validateCues } from "./core.mjs";
+import { runOpus } from "./opus-runtime.mjs";
 export async function translateOpus(cues, c, { root, dir, signal, store, id }) {
   if (!c.opusModel || !existsSync(path.join(c.opusModel, "pytorch_model.bin")))
     throw Error("Chưa cài mô hình OPUS CPU. Chạy scripts/install-opus.py.");
@@ -50,19 +51,8 @@ export async function translateOpus(cues, c, { root, dir, signal, store, id }) {
       });
     };
     try {
-      await run(
-        c.python,
-        [
-          path.join(root, "workers/translate_opus.py"),
-          "--model",
-          c.opusModel,
-          "--input",
-          path.join(dir, "opus-input.json"),
-          "--output",
-          path.join(dir, "opus-output.json"),
-          "--threads",
-          c.threads,
-        ],
+      await runOpus(
+        c, root, dir,
         {
           cwd: dir,
           signal,

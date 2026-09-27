@@ -1,5 +1,5 @@
 """Download portable tools/models into this project; preserve source URLs and SHA256."""
-import concurrent.futures, hashlib, json, pathlib, urllib.request, zipfile, time
+import concurrent.futures, hashlib, json, pathlib, urllib.request, zipfile, time, sys
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 TOOLS, MODELS = ROOT/'tools', ROOT/'models'
 TOOLS.mkdir(exist_ok=True)
@@ -97,12 +97,14 @@ def whisper_model():
     hf_file('ggerganov/whisper.cpp','ggml-small.bin',MODELS/'ggml-small.bin')
 def translation_model():
     hf_file('Qwen/Qwen3-4B-GGUF','Qwen3-4B-Q4_K_M.gguf',MODELS/'Qwen3-4B-Q4_K_M.gguf')
-jobs=[ffmpeg,voices,whisper_model,translation_model,
-      lambda:zip_tool('ggml-org/llama.cpp',lambda n:'bin-win-vulkan-x64.zip' in n,TOOLS/'llama'),
-      lambda:zip_tool('ggml-org/whisper.cpp',lambda n:n=='whisper-bin-x64.zip',TOOLS/'whisper')]
+jobs=[voices,whisper_model,translation_model]
+if sys.platform == 'win32':
+    jobs += [ffmpeg,
+             lambda:zip_tool('ggml-org/llama.cpp',lambda n:'bin-win-vulkan-x64.zip' in n,TOOLS/'llama'),
+             lambda:zip_tool('ggml-org/whisper.cpp',lambda n:n=='whisper-bin-x64.zip',TOOLS/'whisper')]
 if __name__=='__main__':
     with concurrent.futures.ThreadPoolExecutor(max_workers=4) as pool:
         futures=[pool.submit(job) for job in jobs]
         for f in concurrent.futures.as_completed(futures):
             f.result()
-    print('Assets installed. Whisper binary is CPU fallback; use a Vulkan build for GPU ASR.',flush=True)
+    print('Models installed. On macOS install native ffmpeg, whisper-cli and optional llama-server separately. GPU execution requires a real benchmark.',flush=True)

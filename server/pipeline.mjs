@@ -19,6 +19,7 @@ import {
 } from "./translation.mjs";
 import { reuseMemory } from "./knowledge.mjs";
 import { translateOpus } from "./opus.mjs";
+import { runtimeSettings } from "./runtime.mjs";
 export class Pipeline {
   constructor(store, root) {
     this.store = store;
@@ -68,7 +69,7 @@ export class Pipeline {
     }
   }
   async inspect(url, signal) {
-    const c = this.store.settings();
+    const c = runtimeSettings(this.store.settings(), this.root);
     return JSON.parse(
       await run(
         c.ytdlp,
@@ -101,7 +102,7 @@ export class Pipeline {
   }
   async process({ id, mode }, signal) {
     const store = this.store,
-      c = store.settings(),
+      c = runtimeSettings(store.settings(), this.root),
       e = store.episode(id),
       o = { ...store.series(e.seriesId).options },
       dir = store.episodeDir(id);

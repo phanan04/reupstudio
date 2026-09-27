@@ -1,0 +1,16 @@
+**
+!package.json
+!package-lock.json
+!requirements-opus.lock.txt
+!server/
+!server/**
+!public/
+!public/**
+!scripts/
+!scripts/**
+!tests/
+!tests/**
+!workers/
+!workers/translate_opus.py
+!docker/
+!docker/**

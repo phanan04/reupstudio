@@ -13,3 +13,12 @@ node_modules/
 *.key
 cookies*.txt
 dist/
+.DS_Store
+Thumbs.db
+*.sqlite
+*.sqlite-shm
+*.sqlite-wal
+*.db
+*.db-shm
+*.db-wal
+.pytest_cache/

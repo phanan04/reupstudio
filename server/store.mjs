@@ -55,7 +55,7 @@ export const optionDefaults = {
   review: true,
 };
 export class Store {
-  constructor(dir) {
+  constructor(dir, initialSettings = {}) {
     this.dir = dir;
     fs.mkdirSync(dir, { recursive: true });
     this.db = new DatabaseSync(path.join(dir, "studio.sqlite"));
@@ -69,7 +69,7 @@ export class Store {
     this.db.exec('CREATE TABLE IF NOT EXISTS deleted_series(id TEXT PRIMARY KEY, deleted TEXT NOT NULL)');
     this.db
       .prepare("INSERT OR IGNORE INTO settings VALUES(1,?)")
-      .run(JSON.stringify(defaults));
+      .run(JSON.stringify({ ...defaults, ...initialSettings }));
     if (!this.listSeries().length) this.createSeries("Series đầu tiên");
     for (const e of this.episodes())
       if (["running", "queued", "uploading"].includes(e.status))

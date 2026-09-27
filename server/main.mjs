@@ -6,6 +6,7 @@ import { Transform } from "node:stream";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { Store, defaults } from "./store.mjs";
+import { loadEnvironment, dataDirectory, localDefaults, runtimeSettings, portableSettings } from "./runtime.mjs";
 import { Pipeline } from "./pipeline.mjs";
 import { blockedReason } from "./llm.mjs";
 import { remoteEndpoint, providerHealth } from "./ai-provider.mjs";
@@ -19,6 +20,8 @@ import {
   orderOf,
 } from "./knowledge.mjs";
 import { qualityFingerprint } from "./translation.mjs";
+import { opusRuntime } from "./opus-runtime.mjs";
+import { lockData } from "./data-lock.mjs";
 import {
   validateUrl,
   localEndpoint,
@@ -29,8 +32,10 @@ import {
   srt,
 } from "./core.mjs";
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+loadEnvironment(root);
+lockData(dataDirectory(root));
 const port = Number(process.env.PORT || 8765),
-  store = new Store(process.env.VIETSTUDIO_DATA || path.join(root, "data")),
+  store = new Store(dataDirectory(root), localDefaults(root)),
   worker = new Pipeline(store, root);
 const MAX_JSON = 8 * 1024 * 1024,
   MAX_UPLOAD = 20 * 1024 ** 3;
@@ -87,7 +92,7 @@ function state() {
   };
 }
 async function health() {
-  const c = store.settings();
+  const c = runtimeSettings(store.settings(), root);
   const specs = [
     ["ffmpeg", c.ffmpeg, ["-version"]],
     ["ffprobe", c.ffprobe, ["-version"]],
@@ -123,6 +128,14 @@ async function health() {
     detail: voices.join(", ") || "Chưa có giọng Piper",
   });
   if (c.translationEngine === "opus") {
+    if (opusRuntime() === "docker") {
+      try {
+        await run("docker", ["image", "inspect", "vietstudio-opus:local"], { timeout: 15000 });
+        result.push({ name: "OPUS Docker CPU", ok: true, detail: "Image sẵn sàng; chưa xác nhận suy luận. Model được mount chỉ đọc, không dùng mạng khi dịch." });
+      } catch {
+        result.push({ name: "OPUS Docker CPU", ok: false, detail: "Mở Docker Desktop rồi chạy docker compose build opus." });
+      }
+    }
     result.push({
       name: "AI dịch CPU · OPUS",
       ok:
@@ -293,8 +306,8 @@ const server = http.createServer(async (req, res) => {
       }
       c.ocrDirectML = Boolean(c.ocrDirectML);
       c.managedLlm = Boolean(c.managedLlm);
-      store.saveSettings(c);
-      return json(res, c);
+      store.saveSettings(portableSettings(c, root));
+      return json(res, store.settings());
     }
     if (route === "/api/health" && req.method === "GET")
       return json(res, await health());

@@ -9,11 +9,11 @@ p.add_argument('--roi', default='5,78,90,17')
 p.add_argument('--directml', action='store_true')
 p.add_argument('--fps', type=float, default=3)
 args = p.parse_args()
-font = pathlib.Path(os.environ.get('WINDIR', 'C:/Windows')) / 'Fonts' / 'msyh.ttc'
+font = pathlib.Path(os.environ['WINDIR']) / 'Fonts' / 'msyh.ttc' if os.environ.get('WINDIR') else None
 params = {'EngineConfig.onnxruntime.use_dml': args.directml,
           'EngineConfig.onnxruntime.intra_op_num_threads': 4,
           'EngineConfig.onnxruntime.inter_op_num_threads': 1}
-if font.exists():
+if font and font.exists():
     params['Global.font_path'] = str(font)
 engine = RapidOCR(params=params)
 cap = cv2.VideoCapture(args.input)

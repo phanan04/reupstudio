@@ -46,3 +46,7 @@ Input được giới hạn ngữ cảnh; bỏ bớt bằng chứng phụ trư�
 `node --test tests/*.test.mjs` kiểm tra API, SRT milliseconds, TM, RAG, scope tập/dự án, stale approval, checkpoint, schema, CPU fallback và cơ chế opt-in API.
 
 `node scripts/evaluate-context.mjs` chạy OPUS/Qwen thật trên corpus kiểm thử có ngữ cảnh; `EVAL_MODEL=qwen3:4b-instruct` chọn model. `node scripts/evaluate-review.mjs` thử QA trên bản dịch có 3 lỗi cố ý. Kết quả thô trong `data/context-evaluation/latest.json`; xem báo cáo chất lượng đi kèm, không suy rộng corpus nhỏ thành độ chính xác chung.
+
+## Ghi chú đa nền tảng
+
+Hướng dẫn laptop Windows ở trên là lịch sử, không phải cấu hình bắt buộc cho máy hiện tại. Launcher chung hiện là `npm start`; Mac dùng Ollama native/PATH, Windows có thể dùng portable. Model store do launcher tạo mặc định `./models/ollama`; Ollama đã chạy giữ model store của nó. Trên Mac Intel, chọn OPUS sẽ chạy worker CPU trong Docker; cần Docker Desktop và image build lần đầu. Các máy khác mặc định OPUS native. Xem README trước khi setup/chuyển máy.
