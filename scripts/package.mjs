@@ -11,6 +11,8 @@ for (const name of [
   "scripts",
   "tests",
   "README.md",
+  "AGENTS.md",
+  "PROGRESS.md",
   "ARCHITECTURE.md",
   "TEST-REPORT.md",
   "TRANSLATION.md",
