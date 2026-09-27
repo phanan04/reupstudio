@@ -25,7 +25,7 @@ Repository: https://github.com/phanan04/reupstudio. Nhánh triển khai: `codex/
 - YAML Compose/CI parse được; Start.command kiểm tra shell syntax; git diff --check sạch.
 
 ### Chưa kiểm chứng / bước tiếp theo
-- Thay đổi đã commit trên nhánh `codex/cross-platform-runtime`; danh tính Git đã được người dùng cung cấp và cấu hình riêng repo. **Chưa push**: push dry-run bị chặn vì HTTPS GitHub chưa đăng nhập. Cần đăng nhập tài khoản có quyền push trên máy (không gửi token qua chat), rồi `git push -u origin codex/cross-platform-runtime`. `main`/remote chưa đổi.
+- Đã đăng nhập GitHub qua luồng thiết bị và push commit triển khai `718d612` lên `origin/codex/cross-platform-runtime`; nhánh local đã theo dõi nhánh remote. `main` chưa thay đổi. Máy thứ hai fetch rồi checkout đúng nhánh này; CI cần kiểm tra trên commit mới nhất. GitHub CLI native ở tools/github-cli (gitignored); thông tin đăng nhập lưu trong keyring, không nằm trong source.
 - Máy hiện chưa có Docker CLI/Desktop: chưa build/run container thật. CI chưa được xác nhận chạy; Windows và Mac ARM chưa có kiểm chứng runtime trong phiên này.
 - Chưa benchmark AMD/Vulkan/Metal/AMF, chưa render hoặc suy luận model thật trên máy hiện tại. Import Python thành công không chứng nhận chất lượng OCR/TTS/OPUS.
 - Cài Node 24 (kèm npm) trên PATH và công cụ native/model theo README trên từng máy. Sau cài lần đầu: git pull --ff-only, rồi npm start.
