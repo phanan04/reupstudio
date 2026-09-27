@@ -1,0 +1,6 @@
+{
+  "name": "vietstudio-local", "version": "1.0.0", "private": true, "type": "module",
+  "description": "Local Chinese to Vietnamese video localization studio",
+  "engines": {"node": ">=24.0.0"},
+  "scripts": {"start": "node server/main.mjs", "test": "node --test tests/*.test.mjs", "check": "node --check server/main.mjs && node --check server/pipeline.mjs && node --check public/app.js"}
+}

@@ -1,0 +1,714 @@
+<!doctype html>
+<html lang="vi">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>Việt Studio · Trình biên tập</title>
+    <meta
+      name="description"
+      content="Tải video, tạo phụ đề Việt, chỉnh sửa và xuất video trong một không gian biên tập."
+    />
+    <link rel="icon" href="/favicon.svg" />
+    <link rel="stylesheet" href="/style.css" />
+  </head>
+  <body>
+    <div class="studio-app">
+      <header class="topbar">
+        <a class="brand" href="/" aria-label="Việt Studio"
+          >V<span>•</span><b>Việt Studio</b></a
+        >
+        <div class="project-picker">
+          <select id="seriesSelect" aria-label="Dự án"></select
+          ><button id="newProject" class="icon-button" title="Tạo dự án mới">
+            ＋
+          </button>
+          <button id="deleteProject" class="icon-button danger" title="Xóa dự án" aria-label="Xóa dự án">🗑</button>
+          <button id="projectTrash" class="icon-button" title="Dự án đã xóa" aria-label="Dự án đã xóa">↶</button>
+        </div>
+        <span id="saveStatus" class="save-status">Đã lưu</span>
+        <div class="top-actions">
+          <button
+            id="settingsButton"
+            class="icon-button"
+            title="Cấu hình công cụ"
+          >
+            ⚙</button
+          ><button id="exportButton" class="button primary" disabled>
+            Xuất video <span>↗</span>
+          </button>
+        </div>
+      </header>
+      <div class="editor-frame">
+        <nav class="toolrail" aria-label="Công cụ biên tập">
+          <button class="tool active" data-tool="media">
+            <span>▣</span>Video</button
+          ><button class="tool" data-tool="captions">
+            <span>▤</span>Phụ đề</button
+          ><button class="tool" data-tool="voice">
+            <span>♫</span>Giọng đọc
+          </button>
+          <div class="rail-spacer"></div>
+          <button id="knowledgeButton" class="tool">
+            <span>◇</span>Tri thức
+          </button>
+          <button id="qualityButton" class="tool">
+            <span>✓</span>Duyệt dịch
+          </button>
+          <button id="logsButton" class="tool"><span>≡</span>Tiến độ</button>
+        </nav>
+        <aside class="library-panel">
+          <div class="panel-title">
+            <h2 id="libraryTitle">Video của tôi</h2>
+            <span id="itemCount" class="pill">0</span>
+          </div>
+          <div id="mediaLibrary" class="library-content">
+            <button id="importButton" class="button import-button">
+              ＋ Tải video lên
+            </button>
+            <button id="importCapcut" class="button import-button">
+              ＋ Nhập phụ đề CapCut
+            </button>
+            <input
+              id="capcutFiles"
+              type="file"
+              accept=".srt,.vtt"
+              multiple
+              hidden
+            />
+            <div id="episodeList" class="scroll-area media-list"></div>
+            <div class="library-foot">
+              <span id="queueSummary">Chưa có video</span
+              ><button id="batchButton" class="text-button" disabled>
+                Tạo phụ đề tất cả
+              </button>
+            </div>
+          </div>
+          <div id="captionLibrary" class="library-content" hidden>
+            <div class="caption-search">
+              <input
+                id="captionSearch"
+                placeholder="Tìm trong phụ đề…"
+                aria-label="Tìm phụ đề"
+              />
+            </div>
+            <div id="captionList" class="scroll-area caption-list"></div>
+            <div class="library-foot">
+              <button id="importSubtitleButton" class="text-button">
+                Nhập SRT</button
+              ><button id="addCue" class="text-button" disabled>
+                ＋ Thêm câu
+              </button>
+            </div>
+          </div>
+        </aside>
+        <section class="viewer-panel">
+          <div class="viewer-title">
+            <span id="videoTitle">Xem trước</span>
+            <div class="preview-switch">
+              <button id="originalPreview" class="selected">
+                Đang biên tập</button
+              ><button id="outputPreview" disabled>Bản xuất</button>
+            </div>
+            <button
+              id="inspectorToggle"
+              class="icon-button"
+              title="Mở thuộc tính"
+            >
+              ☷
+            </button>
+          </div>
+          <div id="preview" class="preview drop-target">
+            <video id="player" preload="metadata" hidden></video>
+            <div id="emptyPreview" class="empty-preview">
+              <div class="upload-symbol">＋</div>
+              <h1>Bắt đầu với video của bạn</h1>
+              <p>Kéo thả video vào đây hoặc chọn từ máy tính.</p>
+              <button id="emptyImport" class="button primary">
+                Tải video lên</button
+              ><span class="empty-format"
+                >MP4, MOV, MKV, WEBM · Có thể chọn nhiều video</span
+              >
+            </div>
+            <div id="subtitleOverlay"></div>
+            <div id="subtitleWorkspace" class="subtitle-workspace" hidden>
+              <div class="section-title">
+                <div>
+                  <h2>Phụ đề CapCut → Tiếng Việt</h2>
+                  <p class="helper">
+                    Dịch và tải SRT, không cần video. Giữ nguyên mốc thời gian.
+                  </p>
+                </div>
+                <button id="capcutTranslate" class="button primary">
+                  ✦ Dịch SRT
+                </button>
+                <button id="capcutDownload" class="button">
+                  ↓ SRT tiếng Việt
+                </button>
+              </div>
+              <div class="subtitle-pair">
+                <label
+                  >Nguyên văn tiếng Trung<textarea
+                    id="capcutSource"
+                    placeholder="Chọn một câu phụ đề"
+                  ></textarea></label
+                ><label
+                  >Bản dịch tiếng Việt<textarea
+                    id="capcutVi"
+                    placeholder="Bấm Dịch phụ đề sang tiếng Việt để bắt đầu"
+                  ></textarea>
+                </label>
+              </div>
+              <div class="section-title">
+                <button id="capcutPrevious" class="button">← Câu trước</button
+                ><span id="capcutPosition" class="helper"></span
+                ><button id="capcutNext" class="button">Câu tiếp →</button>
+              </div>
+            </div>
+            <div id="roiOutline" hidden><span>Vùng chữ gốc</span></div>
+            <div id="dropOverlay" hidden>Thả video để thêm vào dự án</div>
+          </div>
+          <div class="player-toolbar">
+            <span id="timeDisplay" class="timecode">00:00.00 / 00:00.00</span>
+            <div class="transport">
+              <button
+                id="jumpBack"
+                class="icon-button"
+                title="Lùi 5 giây"
+                disabled
+              >
+                ↶</button
+              ><button
+                id="playButton"
+                class="play-button"
+                title="Phát / dừng (Space)"
+                disabled
+              >
+                ▶</button
+              ><button
+                id="jumpForward"
+                class="icon-button"
+                title="Tiến 5 giây"
+                disabled
+              >
+                ↷
+              </button>
+            </div>
+            <span id="mediaInfo" class="media-info">—</span>
+          </div>
+          <div id="taskStrip" class="task-strip" hidden>
+            <div>
+              <span id="taskStage"></span
+              ><button id="cancelButton" class="text-button">Dừng</button>
+            </div>
+            <progress id="taskProgress" max="100" value="0"></progress>
+          </div>
+          <button
+            id="taskError"
+            class="task-error"
+            hidden
+            title="Bấm để tới câu cần sửa"
+          ></button>
+        </section>
+        <aside id="inspector" class="inspector-panel">
+          <div class="inspector-tabs" role="tablist" aria-label="Thuộc tính">
+            <button role="tab" aria-selected="true" data-inspector="captions">
+              Phụ đề</button
+            ><button role="tab" aria-selected="false" data-inspector="voice">
+              Giọng đọc</button
+            ><button role="tab" aria-selected="false" data-inspector="video">
+              Hình ảnh
+            </button>
+          </div>
+          <div class="inspector-body scroll-area">
+            <section id="captionsProperties">
+              <div class="generate-card">
+                <button id="toggleGeneration" class="text-button">
+                  Phụ đề tự động · Thiết lập ▾
+                </button>
+                <div class="language-flow">
+                  <span>Tiếng Trung</span><span>→</span
+                  ><strong>Tiếng Việt</strong>
+                </div>
+                <label
+                  >Nhận diện phụ đề<input id="subtitleMode" type="hidden" value="auto">
+                  <strong style="display:block;margin-top:6px;color:var(--text)">Tự động nhận diện</strong>
+                  <small>Ưu tiên phụ đề đã nhập hoặc có sẵn; nếu không có, tự nhận diện lời nói tiếng Trung.</small></label
+                ><button
+                  id="generateButton"
+                  class="button primary full"
+                  disabled
+                >
+                  ✦ Tạo phụ đề Việt</button
+                ><small id="engineHint"
+                  >Nhận diện và dịch trên máy của bạn.</small
+                >
+              </div>
+              <div id="cueEditor" hidden>
+                <div class="section-title">
+                  <h2 id="cueEditorTitle">Chỉnh câu</h2>
+                  <button
+                    id="deleteCue"
+                    class="icon-button danger"
+                    title="Xóa câu phụ đề"
+                  >
+                    ×
+                  </button>
+                </div>
+                <div class="two-cols">
+                  <label
+                    >Bắt đầu (giây)<input
+                      id="cueStart"
+                      type="number"
+                      step="0.01"
+                      min="0" /></label
+                  ><label
+                    >Kết thúc (giây)<input
+                      id="cueEnd"
+                      type="number"
+                      step="0.01"
+                      min="0"
+                  /></label>
+                </div>
+                <label
+                  >Tiếng Trung<textarea
+                    id="cueSource"
+                    rows="2"
+                  ></textarea></label
+                ><label
+                  >Tiếng Việt<textarea
+                    id="cueVi"
+                    rows="3"
+                    placeholder="Nhập lời Việt…"
+                  ></textarea></label
+                ><label
+                  >Giọng của câu này<select id="cueVoice">
+                    <option value="">Theo giọng mặc định</option>
+                    <option value="vi_VN-vais1000-medium">VAIS1000</option>
+                    <option value="vi_VN-vivos-x_low">VIVOS</option>
+                    <option value="vi_VN-25hours_single-low">25hours</option>
+                  </select></label
+                >
+                <p id="cueWarning" class="warning" hidden></p>
+                <details>
+                  <summary>Nhân vật & duyệt câu</summary>
+                  <label
+                    >Người nói<select id="cueSpeaker">
+                      <option value="">Chưa xác định</option>
+                    </select></label
+                  >
+                  <label
+                    >Người nghe<select id="cueListener">
+                      <option value="">Chưa xác định</option>
+                    </select></label
+                  >
+                  <label
+                    >Cảnh / ngữ cảnh riêng<input
+                      id="cueScene"
+                      maxlength="300"
+                      placeholder="Ví dụ: em nói với chị, đang tức giận"
+                  /></label>
+                  <button id="approveCue" class="button full">
+                    Duyệt câu & ghi nhớ
+                  </button>
+                  <small id="approvalHint"
+                    >Chỉ câu được duyệt mới vào bộ nhớ dịch.</small
+                  >
+                </details>
+                <button id="nextCue" class="button full">
+                  Câu tiếp theo →
+                </button>
+              </div>
+              <details id="translationDetails">
+                <summary>Ngữ cảnh & thuật ngữ</summary>
+                <label
+                  >Phong cách<select id="translationStyle">
+                    <option value="natural">Tự nhiên, sát nghĩa</option>
+                    <option value="drama">Phim · Nhất quán xưng hô</option>
+                    <option value="technical">Chuyên môn</option>
+                  </select></label
+                ><label
+                  >Bối cảnh<textarea
+                    id="context"
+                    rows="2"
+                    placeholder="Nhân vật, cách xưng hô…"
+                  ></textarea></label
+                ><label
+                  >Thuật ngữ Trung = Việt<textarea
+                    id="glossary"
+                    rows="2"
+                    placeholder="师父 = sư phụ"
+                  ></textarea></label
+                ><small>Áp dụng với bộ dịch LLM.</small>
+              </details>
+              <button id="retranslateButton" class="text-button full" disabled>
+                Dịch lại các câu chưa duyệt
+              </button>
+            </section>
+            <section id="voiceProperties" hidden>
+              <div class="section-title">
+                <h2>Lồng tiếng Việt</h2>
+                <label class="switch"
+                  ><input
+                    id="dub"
+                    type="checkbox"
+                    checked
+                    aria-label="Bật lồng tiếng Việt" /><span></span
+                ></label>
+              </div>
+              <p class="helper">
+                Giọng đọc sẽ được tạo và khớp thời gian khi xuất video.
+              </p>
+              <label
+                >Giọng mặc định<select id="voice">
+                  <option value="vi_VN-vais1000-medium">
+                    VAIS1000 · Chất lượng vừa
+                  </option>
+                  <option value="vi_VN-vivos-x_low">VIVOS · Nhẹ</option>
+                  <option value="vi_VN-25hours_single-low">
+                    25hours · Nhẹ
+                  </option>
+                </select></label
+              ><label
+                >Âm lượng tiếng gốc <output id="volumeLabel">12%</output
+                ><input
+                  id="originalVolume"
+                  type="range"
+                  min="0"
+                  max="1"
+                  step="0.01"
+                  value="0.12" /></label
+              ><small
+                >Đặt 0% để tắt âm thanh gốc. Nhạc nền cũng bị giảm theo.</small
+              >
+              <div class="info-box">
+                Muốn đổi giọng một nhân vật? Chọn câu phụ đề, rồi đổi “Giọng của
+                câu này”.
+              </div>
+            </section>
+            <section id="videoProperties" hidden>
+              <h2>Xử lý chữ trên video</h2>
+              <label
+                >Phụ đề tiếng Trung<select id="cover">
+                  <option value="none">Giữ nguyên</option>
+                  <option value="blur">Làm mờ vùng chọn</option>
+                  <option value="box">Che bằng dải tối</option>
+                  <option value="delogo">Xóa nội suy</option>
+                </select></label
+              >
+              <div id="roiControls" hidden>
+                <p class="helper">Khung vàng trên video là vùng sẽ xử lý.</p>
+                <div class="two-cols">
+                  <label
+                    >Trái (%)<input
+                      id="roiX"
+                      type="number"
+                      min="0"
+                      max="99"
+                      value="5" /></label
+                  ><label
+                    >Trên (%)<input
+                      id="roiY"
+                      type="number"
+                      min="0"
+                      max="99"
+                      value="78" /></label
+                  ><label
+                    >Rộng (%)<input
+                      id="roiW"
+                      type="number"
+                      min="1"
+                      max="100"
+                      value="90" /></label
+                  ><label
+                    >Cao (%)<input
+                      id="roiH"
+                      type="number"
+                      min="1"
+                      max="100"
+                      value="17"
+                  /></label>
+                </div>
+              </div>
+              <label class="check-label"
+                ><input id="burn" type="checkbox" checked /> Hiện phụ đề Việt
+                trong video</label
+              ><small
+                >Hiệu ứng che/xóa được áp dụng khi xuất; khung xem trước đang
+                hiển thị vùng chọn.</small
+              >
+            </section>
+          </div>
+        </aside>
+        <section class="timeline-panel">
+          <div class="timeline-toolbar">
+            <div class="timeline-heading">
+              <h2>Dòng thời gian</h2>
+              <span id="cueCount">0 câu</span>
+            </div>
+            <div class="timeline-actions">
+              <button id="saveCues" class="text-button" disabled>
+                Lưu phụ đề</button
+              ><button id="downloadSrt" class="text-button" disabled>
+                ↓ SRT</button
+              ><span class="divider"></span
+              ><button
+                id="zoomOut"
+                class="icon-button"
+                title="Thu nhỏ timeline"
+              >
+                −</button
+              ><input
+                id="timelineZoom"
+                type="range"
+                min="1"
+                max="8"
+                step="0.5"
+                value="1"
+                aria-label="Thu phóng timeline"
+              /><button
+                id="zoomIn"
+                class="icon-button"
+                title="Phóng to timeline"
+              >
+                ＋</button
+              ><button id="fitTimeline" class="text-button">Vừa khung</button>
+            </div>
+          </div>
+          <div class="timeline-area">
+            <div class="track-labels">
+              <div class="ruler-spacer"></div>
+              <div>▣ <span>Video</span></div>
+              <div>▤ <span>Phụ đề Việt</span></div>
+              <div>♫ <span>Giọng đọc</span></div>
+            </div>
+            <div id="timelineScroll" class="timeline-scroll">
+              <div id="timelineCanvas" class="timeline-canvas">
+                <div id="ruler" class="ruler"></div>
+                <div id="videoTrack" class="track video-track"></div>
+                <div id="captionTrack" class="track caption-track"></div>
+                <div id="voiceTrack" class="track voice-track"></div>
+                <div id="playhead" class="playhead"><i></i></div>
+                <div id="timelineEmpty" class="timeline-empty">
+                  Video và phụ đề của bạn sẽ xuất hiện ở đây
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
+      </div>
+      <footer class="statusbar">
+        <span id="connection">Đang kết nối…</span><span id="importStatus"></span
+        ><span class="shortcut-hint">Space: phát/dừng · Ctrl+S: lưu</span>
+      </footer>
+    </div>
+    <input
+      id="videoUpload"
+      type="file"
+      accept="video/*,.mkv"
+      multiple
+      hidden
+    /><input id="subtitleUpload" type="file" accept=".srt,.vtt,.json" hidden />
+    <dialog id="exportDialog">
+      <div class="dialog-heading">
+        <h2>Xuất video</h2>
+        <button class="icon-button" data-close="exportDialog" aria-label="Đóng">
+          ×
+        </button>
+      </div>
+      <div class="dialog-body">
+        <p id="exportTitle" class="export-title"></p>
+        <div class="two-cols">
+          <label>Định dạng<input value="MP4 · H.264 / AAC" readonly /></label
+          ><label
+            >Độ phân giải<select id="outputHeight">
+              <option value="480">480p</option>
+              <option value="720">720p</option>
+              <option value="1080" selected>1080p</option>
+              <option value="2160">2160p</option>
+            </select></label
+          >
+        </div>
+        <label
+          >Mã hóa<select id="encoder">
+            <option value="libx264">CPU · Tương thích mọi máy</option>
+            <option value="h264_amf">AMD AMF · Máy có GPU AMD</option>
+          </select></label
+        >
+        <div id="exportSummary" class="info-box"></div>
+        <p class="helper">Giữ tỷ lệ video gốc, không phóng nguồn nhỏ lên.</p>
+        <div id="exportResult" hidden>
+          <p class="success">Video đã sẵn sàng.</p>
+          <a id="downloadOutput" class="button primary full">↓ Tải MP4</a>
+        </div>
+        <div id="exportProgress" hidden>
+          <p id="exportStage"></p>
+          <progress id="exportBar" max="100"></progress>
+        </div>
+        <p id="exportError" class="warning" hidden></p>
+      </div>
+      <div class="dialog-footer">
+        <button class="button" data-close="exportDialog">Đóng</button
+        ><button id="renderButton" class="button primary">Xuất video</button>
+      </div>
+    </dialog>
+    <dialog id="settingsDialog" class="wide-dialog">
+      <div class="dialog-heading">
+        <div>
+          <h2>Cấu hình công cụ</h2>
+          <p>Chỉ cần thiết lập khi cài máy hoặc đổi bộ dịch.</p>
+        </div>
+        <button
+          class="icon-button"
+          data-close="settingsDialog"
+          aria-label="Đóng"
+        >
+          ×
+        </button>
+      </div>
+      <div class="dialog-body">
+        <button id="checkHealth" class="button">Kiểm tra công cụ</button>
+        <div id="healthGrid" class="health-grid"></div>
+        <form id="settingsForm"></form>
+      </div>
+    </dialog>
+    <dialog id="logsDialog" class="wide-dialog">
+      <div class="dialog-heading">
+        <h2>Tiến độ xử lý</h2>
+        <button class="icon-button" data-close="logsDialog" aria-label="Đóng">
+          ×
+        </button>
+      </div>
+      <div class="dialog-body">
+        <div id="allJobs"></div>
+        <pre id="logs">Chưa có tác vụ.</pre>
+        <button id="cancelAll" class="button">
+          Dừng các video trong dự án
+        </button>
+      </div>
+    </dialog>
+    <dialog id="projectDialog">
+      <form id="projectForm">
+        <div class="dialog-heading">
+          <h2>Dự án mới</h2>
+          <button
+            type="button"
+            class="icon-button"
+            data-close="projectDialog"
+            aria-label="Đóng"
+          >
+            ×
+          </button>
+        </div>
+        <div class="dialog-body">
+          <label
+            >Tên dự án<input
+              id="projectName"
+              required
+              maxlength="200"
+              placeholder="Ví dụ: Phim ngắn tập 01"
+          /></label>
+        </div>
+        <div class="dialog-footer">
+          <button type="button" class="button" data-close="projectDialog">
+            Hủy</button
+          ><button class="button primary" type="submit">Tạo dự án</button>
+        </div>
+      </form>
+    </dialog>
+    <dialog id="subtitleDialog">
+      <div class="dialog-heading">
+        <h2>Nhập phụ đề</h2>
+        <button
+          class="icon-button"
+          data-close="subtitleDialog"
+          aria-label="Đóng"
+        >
+          ×
+        </button>
+      </div>
+      <div class="dialog-body">
+        <label
+          >Ngôn ngữ của tệp<select id="subtitleLanguage">
+            <option value="zh">Tiếng Trung · Cần dịch</option>
+            <option value="vi">Tiếng Việt · Đã dịch</option>
+          </select></label
+        ><button id="chooseSubtitleFile" class="button primary full">
+          Chọn SRT / VTT / JSON
+        </button>
+      </div>
+    </dialog>
+    <div id="toast" role="status" hidden></div>
+    <dialog id="knowledgeDialog" class="knowledge-dialog">
+      <div class="dialog-heading">
+        <h2>Tri thức xuyên tập</h2>
+        <button
+          class="icon-button"
+          data-close="knowledgeDialog"
+          aria-label="Đóng tri thức"
+        >
+          ×
+        </button>
+      </div>
+      <p class="helper">
+        Dữ liệu dùng riêng cho dự án. Chỉ ghi sự kiện đã xác nhận; ghi chú tập
+        sau không được dùng cho tập trước.
+      </p>
+      <nav id="knowledgeTabs" class="knowledge-tabs">
+        <button data-k-tab="story" class="button">Cốt truyện</button
+        ><button data-k-tab="terms" class="button">Thuật ngữ</button
+        ><button data-k-tab="characters" class="button">Nhân vật</button
+        ><button data-k-tab="relations" class="button">Xưng hô</button
+        ><button data-k-tab="notes" class="button">Ghi chú tập</button
+        ><button data-k-tab="memory" class="button">Bộ nhớ đã duyệt</button>
+      </nav>
+      <div id="knowledgeContent" class="knowledge-content scroll-area"></div>
+      <div class="dialog-actions">
+        <span id="knowledgeStatus" class="helper"></span
+        ><button id="saveKnowledge" class="button primary">Lưu tri thức</button>
+      </div>
+    </dialog>
+    <dialog id="qualityDialog" class="knowledge-dialog">
+      <div class="dialog-heading">
+        <h2>Duyệt chất lượng bản dịch</h2>
+        <button
+          class="icon-button"
+          data-close="qualityDialog"
+          aria-label="Đóng duyệt dịch"
+        >
+          ×
+        </button>
+      </div>
+      <p id="qualitySummary" class="helper"></p>
+      <div class="quality-actions">
+        <button id="runQuality" class="button primary">
+          AI kiểm tra tập này</button
+        ><button id="approveAll" class="button">
+          Tôi đã duyệt tất cả · Ghi nhớ</button
+        ><button id="translateMissing" class="button">
+          Dịch phần còn thiếu
+        </button>
+      </div>
+      <details>
+        <summary>Xử lý nhiều tập</summary>
+        <p class="helper">
+          Chạy tuần tự theo thứ tự tập. Bản dịch đã có được giữ nguyên; chỉ các
+          câu được bạn duyệt mới trở thành bộ nhớ.
+        </p>
+        <button id="translateSeries" class="button">
+          Dịch các tập còn thiếu
+        </button>
+        <button id="qualitySeries" class="button">
+          Kiểm tra các tập đã dịch</button
+        ><label
+          >Thứ tự tập đang mở<input
+            id="episodeOrder"
+            type="number"
+            min="1"
+            max="10000" /></label
+        ><button id="saveOrder" class="button">Lưu thứ tự tập</button>
+      </details>
+      <div id="qualityIssues" class="knowledge-content scroll-area"></div>
+    </dialog>
+    <script type="module" src="/app.js"></script>
+  </body>
+</html>

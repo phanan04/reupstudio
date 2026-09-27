@@ -1,0 +1,15 @@
+data/
+tools/
+models/
+.venv/
+*.log
+__pycache__/
+runtime-path.txt
+node_modules/
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+cookies*.txt
+dist/
