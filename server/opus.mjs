@@ -2,8 +2,12 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import { existsSync, readFileSync } from "node:fs";
 import { hash, validateCues } from "./core.mjs";
+import { mergeTranslations } from "./cue-merge.mjs";
 import { runOpus } from "./opus-runtime.mjs";
+import { recordStage } from "./streaming.mjs";
 export async function translateOpus(cues, c, { root, dir, signal, store, id }) {
+  const retry = store.episode(id).translationRetry?.nonce;
+  const cacheKey = text => hash({ provider: "opus-zh-vi", model: c.opusModel, text, ...(retry ? { retry } : {}) });
   if (!c.opusModel || !existsSync(path.join(c.opusModel, "pytorch_model.bin")))
     throw Error("Chưa cài mô hình OPUS CPU. Chạy scripts/install-opus.py.");
   const result = cues.map((q) => ({ ...q })),
@@ -11,7 +15,7 @@ export async function translateOpus(cues, c, { root, dir, signal, store, id }) {
   for (const q of result) {
     if (q.vi) continue;
     const cached = store.cached(
-      hash({ provider: "opus-zh-vi", model: c.opusModel, text: q.text }),
+      cacheKey(q.text),
     );
     if (cached) q.vi = cached;
     else missing.push(q);
@@ -27,28 +31,28 @@ export async function translateOpus(cues, c, { root, dir, signal, store, id }) {
     );
     const output = path.join(dir, "opus-output.json");
     await fs.rm(output, { force: true });
+    let tick = performance.now();
     const checkpoint = () => {
       if (!existsSync(output)) return;
       const rows = JSON.parse(readFileSync(output, "utf8"));
+      if (!Array.isArray(rows) || new Set(rows.map(q => q.id)).size !== rows.length || rows.some(q => !missing.some(cue => cue.id === q.id)))
+        throw Error("OPUS trả ID không hợp lệ hoặc trùng ID");
       for (const q of missing) {
         const row = rows.find((r) => r.id === q.id);
         if (row && typeof row.vi === "string" && row.vi.trim()) {
           q.vi = row.vi;
           store.cached(
-            hash({ provider: "opus-zh-vi", model: c.opusModel, text: q.text }),
+            cacheKey(q.text),
             q.vi,
           );
         }
       }
-      store.patch(id, {
-        cues: validateCues(result),
-        revision: store.episode(id).revision + 1,
-        translationCheckpoint: {
-          done: result.filter((q) => q.vi).length,
-          total: result.length,
-          provider: "opus",
-        },
-      });
+      mergeTranslations(store, id, cues, result, { provider: "opus" });
+      const e = store.episode(id), done = e.cues.filter(q => q.vi?.trim()).length;
+      const total = e.asrManifest && !e.asrManifest.complete ? null : e.cues.length;
+      const now = performance.now();
+      recordStage(store, id, "translation", done, total, now - tick, total !== null && done === total);
+      tick = now;
     };
     try {
       await runOpus(
@@ -80,10 +84,10 @@ export async function translateOpus(cues, c, { root, dir, signal, store, id }) {
         throw Error("OPUS trả thiếu câu");
       q.vi = row.vi;
       store.cached(
-        hash({ provider: "opus-zh-vi", model: c.opusModel, text: q.text }),
+        cacheKey(q.text),
         q.vi,
       );
     }
   }
-  return validateCues(result);
+  return mergeTranslations(store, id, cues, result, { provider: "opus" });
 }

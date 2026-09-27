@@ -198,9 +198,9 @@
           <div id="taskStrip" class="task-strip" hidden>
             <div>
               <span id="taskStage"></span
-              ><button id="cancelButton" class="text-button">Dừng</button>
+              ><button id="pauseButton" class="text-button">Tạm dừng</button><button id="resumeButton" class="text-button" hidden>Tiếp tục phần còn lại</button><button id="cancelButton" class="text-button">Dừng</button>
             </div>
-            <progress id="taskProgress" max="100" value="0"></progress>
+            <progress id="taskProgress" max="100" value="0"></progress><small id="stageMetrics" aria-live="polite"></small><small id="resourceHint"></small>
           </div>
           <button
             id="taskError"
@@ -218,6 +218,7 @@
             ><button role="tab" aria-selected="false" data-inspector="video">
               Hình ảnh
             </button>
+            <button id="closeInspector" aria-label="Đóng thuộc tính">×</button>
           </div>
           <div class="inspector-body scroll-area">
             <section id="captionsProperties">
@@ -318,7 +319,11 @@
                   Câu tiếp theo →
                 </button>
               </div>
-              <details id="translationDetails">
+              <details><summary>Kiểu phụ đề xem trước & xuất</summary>
+              <label>Font<select id="subtitleFont"><option>Arial</option><option>Times New Roman</option><option>Verdana</option></select></label>
+              <label>Cỡ chữ (khung 1080p)<input id="subtitleSize" type="number" min="24" max="96" value="48"></label>
+              <label>Màu chữ<input id="subtitleColor" type="color" value="#ffffff"></label>
+              </details><details id="translationDetails">
                 <summary>Ngữ cảnh & thuật ngữ</summary>
                 <label
                   >Phong cách<select id="translationStyle">
@@ -684,7 +689,7 @@
           AI kiểm tra tập này</button
         ><button id="approveAll" class="button">
           Tôi đã duyệt tất cả · Ghi nhớ</button
-        ><button id="translateMissing" class="button">
+        ><button id="retryIssues" class="button">Thử lại riêng câu lỗi chưa sửa/duyệt</button><button id="translateMissing" class="button">
           Dịch phần còn thiếu
         </button>
       </div>

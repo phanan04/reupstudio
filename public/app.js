@@ -16,6 +16,7 @@ const statusText = {
   completed: "Đã xuất",
   failed: "Có lỗi",
   cancelled: "Đã dừng",
+  paused: "Tạm dừng",
   interrupted: "Có thể tiếp tục",
   uploading: "Đang tải lên",
 };
@@ -25,6 +26,7 @@ let state = { series: [], episodes: [] },
   projectId = localStorage.getItem("projectId"),
   selected = null,
   cues = [],
+  cueBase = [],
   cueIndex = -1,
   revision = 0,
   editVersion = 0,
@@ -46,6 +48,9 @@ let state = { series: [], episodes: [] },
   captionLimit = 200,
   dragging = false;
 const optionMap = {
+  subtitleFont: "subtitleFont",
+  subtitleSize: "subtitleSize",
+  subtitleColor: "subtitleColor",
   subtitleMode: "subtitleMode",
   style: "translationStyle",
   context: "context",
@@ -149,6 +154,7 @@ $$("[data-inspector]").forEach(
   (b) => (b.onclick = () => showInspector(b.dataset.inspector)),
 );
 $("#inspectorToggle").onclick = () => $("#inspector").classList.toggle("open");
+$("#closeInspector").onclick = () => $("#inspector").classList.remove("open");
 $$("[data-close]").forEach(
   (b) => (b.onclick = () => $("#" + b.dataset.close).close()),
 );
@@ -235,6 +241,7 @@ async function saveOptions() {
     optionSaving = null;
   }
 }
+function editingLocked() { return busy() && selected?.jobMode === "render"; }
 function markDirty() {
   dirty = true;
   editVersion++;
@@ -260,20 +267,26 @@ async function saveCues() {
   clearTimeout(saveTimer);
   const id = selected.id,
     version = editVersion;
-  saving = api(
-    "/api/episodes/" + id + "/cues",
-    { cues: structuredClone(cues), revision },
-    "PUT",
-  );
+  const sent = structuredClone(cues), base = new Map(cueBase.map(c => [c.id, c]));
+  const structural = sent.length !== cueBase.length || sent.some(c => !base.has(c.id));
+  const updates = sent.filter(c => JSON.stringify(c) !== JSON.stringify(base.get(c.id))).map(c => ({ id: c.id, base: base.get(c.id), value: c }));
+  if (!structural && !updates.length) { dirty = false; return; }
+  saving = api("/api/episodes/" + id + "/cues", structural ? { cues: sent, revision } : { updates }, structural ? "PUT" : "PATCH");
   try {
     const e = await saving;
     if (selected?.id === id) {
       revision = e.revision;
       selected = e;
+      cueBase = structuredClone(e.cues);
       if (editVersion === version) {
         dirty = false;
         cues = e.cues;
+      } else {
+        const sentMap = new Map(sent.map(c => [c.id, c]));
+        const pending = new Map(cues.filter(c => JSON.stringify(c) !== JSON.stringify(sentMap.get(c.id))).map(c => [c.id, c]));
+        cues = e.cues.map(c => pending.get(c.id) || c);
       }
+      renderCaptionList(); renderTimeline();
       setSaved(dirty ? "Đang lưu…" : "Đã lưu");
       renderControls();
     }
@@ -353,6 +366,7 @@ async function selectVideo(id) {
   subtitleTime = 0;
   projectKnowledge = await api("/api/series/" + e.seriesId + "/knowledge");
   cues = e.cues;
+  cueBase = structuredClone(e.cues);
   revision = e.revision;
   cueIndex = -1;
   dirty = false;
@@ -421,7 +435,9 @@ function updateOverlay() {
   overlay.style.left = g.x + g.w * 0.05 + "px";
   overlay.style.width = g.w * 0.9 + "px";
   overlay.style.top = g.y + g.h * 0.83 + "px";
-  overlay.style.fontSize = Math.max(12, (g.h * 48) / 1080) + "px";
+  overlay.style.fontSize = Math.max(12, (g.h * (options.subtitleSize || 48)) / 1080) + "px";
+  overlay.style.fontFamily = options.subtitleFont || "Arial";
+  overlay.style.color = options.subtitleColor || "#FFFFFF";
   overlay.textContent =
     outputPreview || !options.burn
       ? ""
@@ -502,29 +518,36 @@ function renderControls() {
     : "✦ Tạo phụ đề Việt";
   $("#exportButton").disabled = !has || locked;
   $("#renderButton").disabled =
-    !has || locked || !cues.length || cues.some((c) => !c.vi?.trim());
+    !has || locked || !cues.length || (selected?.asrManifest && !selected.asrManifest.complete) || cues.some((c) => !c.vi?.trim());
   $("#addCue").disabled = !selected || locked;
-  $("#saveCues").disabled = !dirty || locked;
-  $("#downloadSrt").disabled = !cues.length || cues.some((c) => !c.vi?.trim());
+  $("#saveCues").disabled = !dirty || editingLocked();
+  $("#downloadSrt").disabled = !cues.length || (selected?.asrManifest && !selected.asrManifest.complete) || cues.some((c) => !c.vi?.trim());
   $("#outputPreview").disabled = !selected?.output;
   $("#retranslateButton").disabled = !cues.length || locked;
   $("#cueCount").textContent = cues.length + " câu";
-  $("#taskStrip").hidden = !locked;
+  $("#taskStrip").hidden = !locked && !["paused", "interrupted", "failed", "cancelled"].includes(selected?.status);
+  $("#pauseButton").hidden = !locked;
+  $("#resumeButton").hidden = locked;
   $("#taskStage").textContent = selected?.stage || "";
   $("#taskProgress").value = selected?.progress || 0;
+  const labels = { audio: "Chuẩn bị (giây video)", render: "Xuất (giây video)", asr: "Nhận diện (giây video)", translation: "Dịch (câu)", quality: "QA (câu)" };
+  $("#stageMetrics").textContent = Object.entries(selected?.pipelineMetrics || {}).map(([key, m]) =>
+    `${labels[key] || key}: ${Math.round(m.done)}/${m.total == null ? "đang nhận diện" : Math.round(m.total)} · ${m.status === "complete" ? "xong" : m.etaSeconds == null ? "đang đo ETA" : "còn khoảng " + Math.ceil(m.etaSeconds / 60) + " phút"}`).join(" | ");
+  $("#resourceHint").textContent = selected?.resourcePlan ? `${selected.resourcePlan.slots} công đoạn · ${selected.resourcePlan.reason}${selected.asrManifest?.chunks.some(c => c.warning) ? " · Có đoạn ASR trống cần nghe lại" : ""}` : "";
   $("#cueEditor")
     .querySelectorAll("input,textarea,select,button")
-    .forEach((el) => (el.disabled = locked));
+    .forEach((el) => (el.disabled = editingLocked()));
+  $("#deleteCue").disabled = locked;
   const projectLocked = state.episodes.some(
     (e) => e.seriesId === projectId && ["queued", "running"].includes(e.status),
   );
   for (const id of Object.values(optionMap))
-    $("#" + id).disabled = projectLocked;
+    $("#" + id).disabled = projectLocked && (!["subtitleFont", "subtitleSize", "subtitleColor"].includes(id) || state.episodes.some(e => e.seriesId === projectId && e.jobMode === "render" && ["queued", "running"].includes(e.status)));
   $("#engineHint").textContent =
     state.translationEngine === "opus"
       ? "OPUS CPU · Không suy luận ngữ cảnh. Chọn Ollama/Qwen trong cấu hình để nâng chất lượng."
       : "Ngữ cảnh · Nhân vật · Thuật ngữ · Bộ nhớ đã duyệt.";
-  if (selected?.status === "failed") $("#taskStrip").hidden = true;
+
   $("#taskError").hidden = selected?.status !== "failed";
   $("#taskError").textContent =
     selected?.error || "Xử lý chưa thành công. Mở Tiến độ để xem chi tiết.";
@@ -598,7 +621,7 @@ for (const [id, key] of Object.entries({
       ? "change"
       : "input",
     () => {
-      if (cueIndex < 0 || busy()) return;
+      if (cueIndex < 0 || editingLocked()) return;
       cues[cueIndex][key] = ["start", "end"].includes(key)
         ? Number($("#" + id).value)
         : $("#" + id).value;
@@ -630,7 +653,7 @@ $("#addCue").onclick = () => {
       "Không còn khoảng trống ở cuối video. Chỉnh thời gian câu cuối trước.",
     );
   cues.push({
-    id: String(cues.length + 1),
+    id: "manual-" + crypto.randomUUID(),
     start,
     end,
     text: "",
@@ -688,7 +711,7 @@ function renderTimeline() {
   updatePlayback();
 }
 function startDrag(event, el) {
-  if (event.button !== 0 || busy()) return;
+  if (event.button !== 0 || editingLocked()) return;
   event.preventDefault();
   const index = Number(el.dataset.index),
     c = cues[index],
@@ -787,6 +810,8 @@ $("#batchButton").onclick = action(() =>
       .map((e) => e.id),
   ),
 );
+$("#pauseButton").onclick = action(async () => { if (selected) await api(`/api/episodes/${selected.id}/pause`, {}); await refresh(); });
+$("#resumeButton").onclick = action(async () => { await flush(); if (selected) await api(`/api/episodes/${selected.id}/resume`, {}); await refresh(); });
 $("#cancelButton").onclick = action(async () => {
   if (selected) await api(`/api/episodes/${selected.id}/cancel`, {});
   await refresh();
@@ -801,6 +826,7 @@ $("#retranslateButton").onclick = action(async () => {
   await flush();
   selected = await api(`/api/episodes/${selected.id}/reset-translation`, {});
   cues = selected.cues;
+  cueBase = structuredClone(cues);
   revision = selected.revision;
   await generate([selected.id]);
 });
@@ -898,6 +924,7 @@ $("#subtitleUpload").onchange = action(async (e) => {
     language: $("#subtitleLanguage").value,
   });
   cues = selected.cues;
+  cueBase = structuredClone(cues);
   revision = selected.revision;
   dirty = false;
   $("#subtitleDialog").close();
@@ -1013,6 +1040,7 @@ async function refresh() {
     selected = e;
     if (!dirty && !saving && !dragging && revision !== e.revision) {
       cues = e.cues;
+      cueBase = structuredClone(e.cues);
       revision = e.revision;
       renderCaptionList();
       renderTimeline();
@@ -1103,7 +1131,7 @@ function renderSubtitleWorkspace() {
   ]) {
     const el = $("#" + id);
     if (document.activeElement !== el) el.value = c?.[key] || "";
-    el.disabled = !c || !!busy();
+    el.disabled = !c || !!editingLocked();
   }
   $("#capcutPosition").textContent = c
     ? `Câu ${cueIndex + 1}/${cues.length} · ${time(c.start)} → ${time(c.end)}`
@@ -1111,7 +1139,7 @@ function renderSubtitleWorkspace() {
   $("#capcutPrevious").disabled = cueIndex <= 0;
   $("#capcutNext").disabled = cueIndex >= cues.length - 1;
   $("#capcutDownload").disabled =
-    !cues.length || cues.some((q) => !q.vi?.trim());
+    !cues.length || (selected?.asrManifest && !selected.asrManifest.complete) || cues.some((q) => !q.vi?.trim());
   $("#capcutTranslate").disabled = !!busy() || !cues.length;
 }
 for (const [id, key, other] of [
@@ -1119,7 +1147,7 @@ for (const [id, key, other] of [
   ["capcutVi", "vi", "cueVi"],
 ])
   $("#" + id).oninput = () => {
-    if (cueIndex < 0 || busy()) return;
+    if (cueIndex < 0 || editingLocked()) return;
     cues[cueIndex][key] = $("#" + id).value;
     $("#" + other).value = $("#" + id).value;
     markDirty();
@@ -1330,6 +1358,7 @@ function renderQuality() {
     `${selected.approvedIds?.length || 0}/${cues.length} câu được bạn duyệt · ${q ? label[q.status] : "Chưa kiểm tra"}${stale ? " · Kết quả đã cũ, cần kiểm tra lại" : ""}${q?.reason ? " · " + q.reason : ""}`;
   for (const id of [
     "runQuality",
+    "retryIssues",
     "approveAll",
     "translateMissing",
     "saveOrder",
@@ -1369,6 +1398,7 @@ function renderQuality() {
           issueIndex: Number(b.dataset.applyIssue),
         });
         cues = selected.cues;
+  cueBase = structuredClone(cues);
         revision = selected.revision;
         renderCaptionList();
         renderTimeline();
@@ -1386,6 +1416,7 @@ $("#qualityButton").onclick = action(async () => {
   renderQuality();
   $("#qualityDialog").showModal();
 });
+$("#retryIssues").onclick = action(async () => { await flush(); await api(`/api/episodes/${selected.id}/retry-issues`, {}); await refresh(); });
 $("#runQuality").onclick = action(async () => {
   await flush();
   await api("/api/queue", { ids: [selected.id], mode: "quality" });

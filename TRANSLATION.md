@@ -50,3 +50,7 @@ Input được giới hạn ngữ cảnh; bỏ bớt bằng chứng phụ trư�
 ## Ghi chú đa nền tảng
 
 Hướng dẫn laptop Windows ở trên là lịch sử, không phải cấu hình bắt buộc cho máy hiện tại. Launcher chung hiện là `npm start`; Mac dùng Ollama native/PATH, Windows có thể dùng portable. Model store do launcher tạo mặc định `./models/ollama`; Ollama đã chạy giữ model store của nó. Trên Mac Intel, chọn OPUS sẽ chạy worker CPU trong Docker; cần Docker Desktop và image build lần đầu. Các máy khác mặc định OPUS native. Xem README trước khi setup/chuyển máy.
+
+## Nhận diện/dịch tăng dần
+
+Whisper CPU chuyển các đoạn đã nhận diện sang dịch theo thứ tự, có giới hạn một đoạn chờ và giữ hai câu cuối để bổ sung ngữ cảnh. Có thể sửa từng câu khi dịch; checkpoint chỉ điền câu trống chưa thay đổi. Pause/resume và thử lại câu lỗi giữ các câu đã sửa/duyệt. Xem [pipeline tăng dần](docs/STREAMING-PIPELINE.md) cho cách dùng, phép đo và các giới hạn ASR/timestamp.

@@ -21,6 +21,7 @@ import {
 } from "./knowledge.mjs";
 import { qualityFingerprint } from "./translation.mjs";
 import { opusRuntime } from "./opus-runtime.mjs";
+import { editCuePatch } from "./cue-merge.mjs";
 import { lockData } from "./data-lock.mjs";
 import {
   validateUrl,
@@ -82,7 +83,7 @@ function state() {
     series: store.listSeries(),
     episodes: store
       .episodes()
-      .map(({ cues, quality, ...e }) => ({
+      .map(({ cues, quality, probeInfo, asrManifest, ...e }) => ({
         ...e,
         cueCount: cues.length,
         qualityStatus: quality?.status,
@@ -255,6 +256,7 @@ const server = http.createServer(async (req, res) => {
         "ytdlp",
         "whisper",
         "python",
+        "whisperVadModel",
         "whisperModel",
         "voicesDir",
         "cookies",
@@ -369,18 +371,17 @@ const server = http.createServer(async (req, res) => {
     if (match && req.method === "PUT") {
       const s = store.series(match[1]);
       if (!s) throw Error("Không tìm thấy series");
-      if (
-        store
-          .episodes(s.id)
-          .some((e) => ["queued", "running"].includes(e.status))
-      )
-        throw Error("Dừng series trước khi đổi thiết lập");
       const b = await body(req);
+      const active = store.episodes(s.id).filter(e => ["queued", "running"].includes(e.status));
+      const changed = Object.keys(b.options || {}).filter(k => b.options[k] !== s.options[k]);
+      if (active.length && (active.some(e => e.jobMode === "render") || changed.some(k => !["subtitleFont", "subtitleSize", "subtitleColor"].includes(k))))
+        throw Error("Dừng series trước khi đổi thiết lập xử lý; vẫn có thể chỉnh kiểu chữ khi nhận diện/dịch");
       store.updateSeries(
         s.id,
         String(b.title || s.title).slice(0, 200),
         options(b.options || {}, s.options),
       );
+      if (changed.length) for (const episode of store.episodes(s.id)) store.patch(episode.id, { outputRevision: null });
       return json(res, store.series(s.id));
     }
     if (route === "/api/inspect" && req.method === "POST") {
@@ -464,15 +465,9 @@ const server = http.createServer(async (req, res) => {
           path.join(dir, "upload.part"),
           path.join(dir, "source" + ext),
         );
-        return json(
-          res,
-          store.patch(e.id, {
-            source: "source" + ext,
-            status: "idle",
-            stage: "Đã nhập video",
-          }),
-          201,
-        );
+        const uploaded = store.patch(e.id, { source: "source" + ext, status: "idle", stage: "Đã nhập video" });
+        worker.prepareUpload(e.id);
+        return json(res, uploaded, 201);
       } catch (err) {
         store.patch(e.id, {
           status: "failed",
@@ -501,13 +496,35 @@ const server = http.createServer(async (req, res) => {
       return json(res, { queued: ids.length });
     }
     match = route.match(
-      /^\/api\/episodes\/([\w-]+)(?:\/(cues|subtitles|cancel|logs|reset-translation|approve|unapprove|memory|quality-apply|order))?$/,
+      /^\/api\/episodes\/([\w-]+)(?:\/(cues|subtitles|cancel|pause|resume|retry-issues|logs|reset-translation|approve|unapprove|memory|quality-apply|order))?$/,
     );
     if (match) {
       const id = match[1],
         action = match[2],
         e = requiredEpisode(id);
       if (!action && req.method === "GET") return json(res, episodeDetail(e));
+      if (action === "retry-issues" && req.method === "POST") {
+        editable(e);
+        if (!e.quality || e.quality.fingerprint !== qualityFingerprint(store, e)) throw Error("Kiểm tra chất lượng lại trước khi thử lại câu lỗi");
+        const protectedIds = new Set([...approvalState(store, e), ...(e.userEditedIds || [])]);
+        const issues = e.quality.issues.filter(q => ["missing", "untranslated", "meaning", "omission", "glossary", "name", "pronoun"].includes(q.type) && !protectedIds.has(q.id));
+        const ids = new Set(issues.map(q => q.id));
+        if (!ids.size) throw Error("Không có câu lỗi có thể dịch lại; các câu đã sửa/duyệt được bảo vệ");
+        store.patch(id, { cues: e.cues.map(q => ids.has(q.id) ? { ...q, vi: "" } : q), revision: e.revision + 1,
+          translationRetry: { nonce: Date.now(), issues } });
+        worker.enqueue(id, "translate"); return json(res, { queued: ids.size });
+      }
+      if (action === "pause" && req.method === "POST") { worker.pause(id); return json(res, { ok: true }); }
+      if (action === "resume" && req.method === "POST") { worker.resume(id); return json(res, { ok: true }); }
+      if (action === "cues" && req.method === "PATCH") {
+        const b = await body(req);
+        const e = requiredEpisode(id);
+        if (["running", "queued"].includes(e.status) && e.jobMode === "render") throw Error("Đợi xuất xong trước khi sửa");
+        try {
+          const cues = editCuePatch(e.cues, b.updates);
+          return json(res, episodeDetail(store.patch(id, { cues, manualCues: true, revision: e.revision + 1, userEditedIds: [...new Set([...(e.userEditedIds || []), ...b.updates.map(q => q.id)])] })));
+        } catch (error) { if (error.status === 409) return json(res, { error: error.message }, 409); throw error; }
+      }
       if (action === "memory" && req.method === "GET") {
         return json(res, {
           entries: memories(store, e).slice(-300),
@@ -600,8 +617,9 @@ const server = http.createServer(async (req, res) => {
         );
       }
       if (action === "cues" && req.method === "PUT") {
-        editable(e);
         const b = await body(req);
+        const e = requiredEpisode(id);
+        editable(e);
         if (b.revision !== e.revision)
           return json(
             res,
@@ -613,6 +631,7 @@ const server = http.createServer(async (req, res) => {
           episodeDetail(
             store.patch(id, {
               cues: validateCues(b.cues),
+              userEditedIds: [...new Set([...(e.userEditedIds || []), ...b.cues.filter(q => JSON.stringify(q) !== JSON.stringify(e.cues.find(old => old.id === q.id))).map(q => q.id)])],
               manualCues: true,
               revision: e.revision + 1,
             }),
@@ -640,7 +659,7 @@ const server = http.createServer(async (req, res) => {
         kind = match[2],
         dir = store.episodeDir(e.id);
       if (kind === "subtitles") {
-        if (!e.cues.length || e.cues.some(c=>!c.vi?.trim())) throw Error('Còn câu chưa dịch. Hoàn tất bản Việt trước khi tải SRT.');
+        if ((e.asrManifest && !e.asrManifest.complete) || !e.cues.length || e.cues.some(c=>!c.vi?.trim())) throw Error('Còn câu chưa dịch. Hoàn tất bản Việt trước khi tải SRT.');
         res.writeHead(200, {
           "Content-Type": "application/x-subrip; charset=utf-8",
           "Content-Disposition": 'attachment; filename="vietnamese.srt"',
@@ -693,7 +712,10 @@ server.listen(port, "127.0.0.1", () =>
 function stop() {
   worker.pending = [];
   worker.active?.controller.abort();
-  server.close(() => {
+  worker.prepareController.abort();
+  server.close(async () => {
+    await worker.prepareTail;
+    while (worker.active) await new Promise(resolve => setTimeout(resolve, 20));
     store.close();
     process.exit(0);
   });

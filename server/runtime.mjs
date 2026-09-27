@@ -4,7 +4,7 @@ import { fileURLToPath } from "node:url";
 
 export const projectRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const binaries = ["ffmpeg", "ffprobe", "python", "ytdlp", "whisper", "llama"];
-const resources = ["whisperModel", "llamaModel", "opusModel", "voicesDir", "cookies"];
+const resources = ["whisperVadModel", "whisperModel", "llamaModel", "opusModel", "voicesDir", "cookies"];
 
 export function loadEnvironment(root = projectRoot) {
   // Empty value disables .env loading for isolated tests and CI.

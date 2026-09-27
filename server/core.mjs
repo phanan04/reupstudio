@@ -123,7 +123,14 @@ export function validateCues(cues) {
   if (!Array.isArray(cues) || cues.length > 20000)
     throw Error("Danh sách phụ đề không hợp lệ");
   let prev = -1;
+  const ids = new Set(cues.filter(c => c.id !== undefined).map(c => String(c.id)));
+  const seen = new Set();
+  let nextId = 1;
   return cues.map((c, i) => {
+    while (ids.has(String(nextId)) || seen.has(String(nextId))) nextId++;
+    const id = c.id === undefined ? String(nextId++) : String(c.id);
+    if (!/^[\w-]{1,80}$/.test(id) || seen.has(id)) throw Error("ID phụ đề không hợp lệ hoặc bị trùng");
+    seen.add(id);
     const start = Number(c.start),
       end = Number(c.end);
     if (
@@ -154,7 +161,7 @@ export function validateCues(cues) {
         meta[key] = c[key].trim();
       }
     }
-    return { id: String(i + 1), start, end, text, vi, voice, ...meta };
+    return { id, start, end, text, vi, voice, ...meta };
   });
 }
 export function parseSubtitles(content) {
@@ -196,13 +203,17 @@ export const srt = (cues) =>
         `${i + 1}\n${timestamp(c.start)} --> ${timestamp(c.end)}\n${c.vi || c.text}\n`,
     )
     .join("\n");
-export function ass(cues) {
+export function ass(cues, style = {}) {
+  const font = ["Arial", "Times New Roman", "Verdana"].includes(style.subtitleFont) ? style.subtitleFont : "Arial";
+  const size = Number.isFinite(style.subtitleSize) ? Math.max(24, Math.min(96, style.subtitleSize)) : 48;
+  const hex = /^#[0-9a-f]{6}$/i.test(style.subtitleColor || "") ? style.subtitleColor.slice(1) : "FFFFFF";
+  const color = hex.slice(4, 6) + hex.slice(2, 4) + hex.slice(0, 2);
   const clean = (s) =>
     String(s)
       .replace(/[{}\\]/g, "")
       .replace(/\r?\n/g, "\\N");
   return (
-    `[Script Info]\nScriptType: v4.00+\nPlayResX: 1920\nPlayResY: 1080\nWrapStyle: 0\n[V4+ Styles]\nFormat: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding\nStyle: Default,Arial,48,&H00FFFFFF,&H000000FF,&H00101010,&H80000000,-1,0,0,0,100,100,0,0,1,2.5,1,2,90,90,55,1\n[Events]\nFormat: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text\n` +
+    `[Script Info]\nScriptType: v4.00+\nPlayResX: 1920\nPlayResY: 1080\nWrapStyle: 0\n[V4+ Styles]\nFormat: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding\nStyle: Default,${font},${size},&H00${color},&H000000FF,&H00101010,&H80000000,-1,0,0,0,100,100,0,0,1,2.5,1,2,90,90,55,1\n[Events]\nFormat: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text\n` +
     cues
       .map(
         (c) =>
@@ -213,6 +224,10 @@ export function ass(cues) {
 }
 export function options(raw, base) {
   const o = { ...base, ...raw };
+  if (!["Arial", "Times New Roman", "Verdana"].includes(o.subtitleFont)) throw Error("Font không hợp lệ");
+  if (!Number.isFinite(Number(o.subtitleSize)) || o.subtitleSize < 24 || o.subtitleSize > 96) throw Error("Cỡ chữ từ 24 đến 96");
+  o.subtitleSize = Number(o.subtitleSize);
+  if (!/^#[0-9a-f]{6}$/i.test(o.subtitleColor)) throw Error("Màu chữ không hợp lệ");
   for (const [key, allowed] of Object.entries({
     subtitleMode: ["auto", "whisper", "ocr", "manual"],
     style: ["natural", "drama", "technical"],

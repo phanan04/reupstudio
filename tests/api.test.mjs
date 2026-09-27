@@ -55,6 +55,17 @@ test("API persists edits, streams ranges and rejects stale writes / foreign orig
       "PUT",
     );
     assert.equal(r.status, 409);
+    const saved = await (await fetch(base + `/api/episodes/${e.id}`)).json();
+    const update = { id: saved.cues[0].id, base: saved.cues[0], value: { ...saved.cues[0], vi: "Bản sửa riêng từng câu" } };
+    r = await request(`/api/episodes/${e.id}/cues`, { updates: [update] }, "PATCH");
+    assert.equal(r.status, 200);
+    const patched = await r.json();
+    assert.equal(patched.cues[0].vi, update.value.vi);
+    assert.ok(patched.userEditedIds.includes(update.id));
+    r = await request(`/api/episodes/${e.id}/cues`, { updates: [update] }, "PATCH");
+    assert.equal(r.status, 409);
+    r = await request(`/api/episodes/${e.id}/pause`, {});
+    assert.equal(r.status, 400);
     r = await fetch(base + "/api/series", {
       method: "POST",
       headers: { Origin: "https://evil.example", "X-VietStudio": "1" },

@@ -63,6 +63,7 @@ test("LLM retries malformed JSON, enforces IDs, receives context and reuses cach
       context: "Hai người bạn",
       glossary: "师父 = sư phụ",
     };
+    db.patch(e.id, { cues });
     const result = await p.translate(
       cues,
       o,

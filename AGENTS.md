@@ -48,3 +48,9 @@
 - Trước làm: kiểm tra Git status, fetch, pull --ff-only khi sạch. Dùng nhánh `codex/<tên-việc>`, một nhánh chỉ sửa trên một máy tại một thời điểm. Không tự force-push/reset/clean.
 - Trước chuyển máy: test, cập nhật PROGRESS, commit các file đã kiểm tra và push khi được yêu cầu/ủy quyền; không coi file chưa commit/push là đã đồng bộ qua GitHub. Máy kia checkout đúng nhánh trước pull.
 - CI có Node Windows/macOS Intel/macOS ARM/Linux; Python Windows/macOS và Docker Linux. Phân biệt cấu hình workflow với kết quả workflow đã chạy; không nhận đã kiểm thử OS/GPU không có tại phiên làm việc.
+
+## Pipeline tăng dần
+- Đọc `docs/STREAMING-PIPELINE.md`. Một tập hoạt động, tối đa một ASR CPU và một bộ dịch có thứ tự; không tăng worker khi chưa đo tài nguyên.
+- Giữ manifest đoạn và ID ASR ổn định; gộp bằng `cue-merge.mjs`, không thay toàn bộ cues bằng snapshot cũ trong callback bất đồng bộ.
+- PATCH từng câu kiểm tra snapshot mới nhất sau khi đọc request body. Không ghi đè câu sửa tay/đã duyệt khi retry QA.
+- Phân biệt benchmark scheduler giả lập, FFmpeg tổng hợp và suy luận/model thực. Không gọi số đo giả lập là tốc độ AI.

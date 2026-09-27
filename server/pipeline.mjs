@@ -20,12 +20,17 @@ import {
 import { reuseMemory } from "./knowledge.mjs";
 import { translateOpus } from "./opus.mjs";
 import { runtimeSettings } from "./runtime.mjs";
+import { mergeTranslations } from "./cue-merge.mjs";
+import { boundedPipeline, recognizeChunks, resourcePlan, recordStage } from "./streaming.mjs";
 export class Pipeline {
   constructor(store, root) {
     this.store = store;
     this.root = root;
     this.pending = [];
     this.active = null;
+    this.prepareTail = Promise.resolve();
+    this.preparing = new Map();
+    this.prepareController = new AbortController();
   }
   enqueue(id, mode = "all") {
     const e = this.store.episode(id);
@@ -33,16 +38,30 @@ export class Pipeline {
     if (mode === "all" && e.subtitleOnly) mode = "translate";
     if (["running", "queued"].includes(e.status))
       throw Error("Tập đã nằm trong hàng đợi");
-    if (!["all", "render", "translate", "quality"].includes(mode))
+    if (!["all", "render", "translate", "quality", "prepare"].includes(mode))
       throw Error("Chế độ không hợp lệ");
+    if (mode === "render" && e.asrManifest && !e.asrManifest.complete)
+      throw Error("Hãy tiếp tục nhận diện hết video trước khi xuất");
     this.store.patch(id, {
       status: "queued",
       progress: 0,
       stage: "Đang chờ",
+      jobMode: mode,
       error: null,
     });
     this.pending.push({ id, mode });
     queueMicrotask(() => this.pump());
+  }
+  pause(id) {
+    const e = this.store.episode(id);
+    if (!["running", "queued"].includes(e.status)) throw Error("Không có tác vụ đang chạy để tạm dừng");
+    if (this.active?.id === id) { this.active.paused = true; this.active.controller.abort(); }
+    else { this.pending = this.pending.filter(j => j.id !== id); this.store.patch(id, { status: "paused", stage: "Đã tạm dừng", jobMode: e.jobMode || "all" }); }
+  }
+  resume(id) {
+    const e = this.store.episode(id);
+    if (!["paused", "interrupted", "failed", "cancelled"].includes(e.status)) throw Error("Tập không ở trạng thái có thể tiếp tục");
+    this.enqueue(id, e.jobMode || (e.subtitleOnly ? "translate" : "all"));
   }
   cancel(id) {
     this.pending = this.pending.filter((j) => j.id !== id);
@@ -58,9 +77,9 @@ export class Pipeline {
       await this.process(job, controller.signal);
     } catch (e) {
       this.store.patch(job.id, {
-        status: controller.signal.aborted ? "cancelled" : "failed",
-        error: e.message,
-        stage: controller.signal.aborted ? "Đã dừng" : "Xử lý thất bại",
+        status: this.active?.paused ? "paused" : controller.signal.aborted ? "cancelled" : "failed",
+        error: controller.signal.aborted ? null : e.message,
+        stage: this.active?.paused ? "Đã tạm dừng — có thể tiếp tục" : controller.signal.aborted ? "Đã dừng" : "Xử lý thất bại",
       });
       this.store.log(job.id, e.message);
     } finally {
@@ -100,6 +119,32 @@ export class Pipeline {
       ),
     );
   }
+  prepareUpload(id) {
+    if (this.preparing.has(id)) return this.preparing.get(id);
+    const task = this.prepareTail.then(async () => {
+      if (this.prepareController.signal.aborted) return;
+      const e = this.store.episode(id);
+      if (!e?.source) return;
+      try { await this.probeEpisode(id, path.join(this.store.episodeDir(id), e.source), runtimeSettings(this.store.settings(), this.root), this.prepareController.signal); }
+      catch (error) { if (this.store.episode(id)) this.store.patch(id, { prepareError: error.message }); }
+    });
+    this.prepareTail = task.catch(() => {});
+    this.preparing.set(id, task);
+    task.then(() => this.preparing.delete(id), () => this.preparing.delete(id));
+    return task;
+  }
+  async probeEpisode(id, file, c, signal) {
+    const stat = await fs.stat(file), key = hash([stat.size, stat.mtimeMs]);
+    const e = this.store.episode(id);
+    if (e.probeKey === key && e.probeInfo) return e.probeInfo;
+    const info = await this.probe(file, c, signal), video = info.streams.find(s => s.codec_type === "video");
+    if (!video) throw Error("Tệp không có luồng video");
+    const duration = Number(info.format.duration || video.duration);
+    if (!Number.isFinite(duration) || duration <= 0 || duration > 86400) throw Error("Thời lượng video không hợp lệ");
+    if (this.store.episode(id)) this.store.patch(id, { probeKey: key, probeInfo: info, prepareError: null,
+      media: { width: video.width, height: video.height, duration, hasAudio: info.streams.some(s => s.codec_type === "audio") } });
+    return info;
+  }
   async process({ id, mode }, signal) {
     const store = this.store,
       c = runtimeSettings(store.settings(), this.root),
@@ -137,7 +182,7 @@ export class Pipeline {
       store.patch(id, {
         status: "review",
         stage: "Sẵn sàng duyệt bản dịch",
-        progress: 65,
+        progress: 100,
       });
       return;
     }
@@ -178,7 +223,8 @@ export class Pipeline {
       if (!source) throw Error("Không tìm thấy video sau khi tải");
       store.patch(id, { source });
     }
-    const info = await this.probe(path.join(dir, source), c, signal),
+    if (this.preparing.has(id)) await this.preparing.get(id);
+    const info = await this.probeEpisode(id, path.join(dir, source), c, signal),
       video = info.streams.find((s) => s.codec_type === "video");
     if (!video) throw Error("Tệp không có luồng video");
     const duration = Number(info.format.duration || video.duration);
@@ -191,7 +237,8 @@ export class Pipeline {
       hasAudio: info.streams.some((s) => s.codec_type === "audio"),
     };
     store.patch(id, { media });
-    let cues = store.episode(id).cues;
+    if (mode === "prepare") { store.patch(id, { status: "idle", stage: "Video sẵn sàng", progress: 100 }); return; }
+    let cues = store.episode(id).cues, streamed = false;
     if (mode === "all") {
       const extractionKey = hash({
         source,
@@ -203,7 +250,8 @@ export class Pipeline {
         if (!cues.length) throw Error("Hãy nhập phụ đề hoặc chọn Whisper/OCR");
       } else if (
         !cues.length ||
-        (!e.manualCues && e.extractionKey !== extractionKey)
+        (!e.manualCues && e.extractionKey !== extractionKey) ||
+        (e.asrManifest && !e.asrManifest.complete)
       ) {
         stage("Trích xuất phụ đề tiếng Trung", 20);
         cues = [];
@@ -269,58 +317,27 @@ export class Pipeline {
             throw Error("Video không có âm thanh; chọn OCR hoặc nhập SRT");
           if (!c.whisperModel || !existsSync(c.whisperModel))
             throw Error("Chưa cài mô hình Whisper. Mở Cấu hình máy.");
-          stage("Whisper nhận diện tiếng Trung", 28);
-          await cmd(c.ffmpeg, [
-            "-y",
-            "-i",
-            source,
-            "-vn",
-            "-ar",
-            "16000",
-            "-ac",
-            "1",
-            "-c:a",
-            "pcm_s16le",
-            "speech.wav",
-          ]);
-          await cmd(
-            c.whisper,
-            [
-              "-m",
-              c.whisperModel,
-              "-f",
-              "speech.wav",
-              "-l",
-              "zh",
-              "-osrt",
-              "-of",
-              "whisper",
-              "-t",
-              c.threads,
-            ],
-            { timeout: 12 * 3600000 },
-          );
-          cues = parseSubtitles(
-            await fs.readFile(path.join(dir, "whisper.srt"), "utf8"),
-          );
+          await this.streamAsr({ id, source: path.join(dir, source), duration, c, o, dir, signal });
+          cues = store.episode(id).cues;
+          streamed = true;
         }
         store.patch(id, {
           cues,
           extractionKey,
-          manualCues: false,
+          manualCues: Boolean(store.episode(id).manualCues),
           revision: store.episode(id).revision + 1,
         });
       }
       if (!cues.length) throw Error("Không tìm thấy lời thoại/phụ đề");
       stage("Dịch tiếng Việt theo ngữ cảnh", 40);
-      cues = await this.translateEpisode(cues, o, c, signal, id);
+      if (!streamed) cues = await this.translateEpisode(cues, o, c, signal, id);
       store.patch(id, { cues });
       await fs.writeFile(path.join(dir, "vietnamese.srt"), srt(cues));
-      if (o.review) {
+      { // Rendering is an explicit user action; processing stops at review.
         store.patch(id, {
           status: "review",
           stage: "Bản dịch sẵn sàng để duyệt",
-          progress: 65,
+          progress: 100,
         });
         store.log(id, "Duyệt phụ đề rồi chọn “Xuất từ bản dịch đã sửa”.");
         return;
@@ -331,7 +348,7 @@ export class Pipeline {
     if (cues.some((q) => q.end > duration + 0.25))
       throw Error("Có câu phụ đề vượt thời lượng video");
     await fs.writeFile(path.join(dir, "vietnamese.srt"), srt(cues));
-    await fs.writeFile(path.join(dir, "vietnamese.ass"), ass(cues));
+    await fs.writeFile(path.join(dir, "vietnamese.ass"), ass(cues, o));
     let dubFile = null;
     if (o.dub) {
       stage("Tạo giọng đọc tiếng Việt", 68);
@@ -485,11 +502,22 @@ export class Pipeline {
       "+faststart",
       "output.pending.mp4",
     ];
-    await cmd(c.ffmpeg, args, { timeout: 12 * 3600000 });
+    let renderTick = performance.now(), renderOutput = "";
+    await cmd(c.ffmpeg, ["-progress", "pipe:1", "-nostats", ...args], { timeout: 12 * 3600000,
+      onLine: text => {
+        renderOutput = (renderOutput + text).slice(-8000);
+        const matches = [...renderOutput.matchAll(/out_time_us=(\d+)\r?\n/g)];
+        if (!matches.length) return;
+        const done = Math.min(duration, Number(matches.at(-1)[1]) / 1e6), now = performance.now();
+        recordStage(store, id, "render", done, duration, now - renderTick, done >= duration);
+        renderTick = now; renderOutput = "";
+        store.patch(id, { progress: Math.round(100 * done / duration), stage: `Xuất video ${done.toFixed(1)}/${duration.toFixed(1)} giây` });
+      } });
     await fs.rename(
       path.join(dir, "output.pending.mp4"),
       path.join(dir, "output.mp4"),
     );
+    recordStage(store, id, "render", duration, duration, 0, true);
     store.patch(id, {
       status: "completed",
       progress: 100,
@@ -502,9 +530,25 @@ export class Pipeline {
   async translate(cues, o, c, signal, progress, id) {
     return translateContext(this.store, cues, o, c, signal, progress, id);
   }
-  async translateEpisode(cues, o, c, signal, id) {
+  async streamAsr({ id, source, duration, c, o, dir, signal }) {
+    const store = this.store;
+    await withProvider(c, signal, async () => {
+      await boundedPipeline(
+        sig => recognizeChunks({ store, id, source, duration, c, dir, signal: sig }),
+        async (_chunk, sig) => {
+          const e = store.episode(id);
+          const ready = e.asrManifest.complete ? e.cues : e.cues.slice(0, Math.max(0, e.cues.length - 2));
+          if (ready.length) await this.translateEpisode(ready, o, c, sig, id, { session: true, review: false });
+        }, { signal, parallel: () => { const plan = resourcePlan(c); store.patch(id, { resourcePlan: plan }); return plan.parallel; } });
+      await this.translateEpisode(store.episode(id).cues, o, c, signal, id, { session: true });
+      const current = store.episode(id);
+      recordStage(store, id, "translation", current.cues.filter(q => q.vi).length, current.cues.length, 0, true);
+    }, m => store.log(id, m));
+  }
+  async translateEpisode(cues, o, c, signal, id, { session = false, review = true } = {}) {
     const store = this.store;
     let result = reuseMemory(store, store.episode(id), cues);
+    mergeTranslations(store, id, cues, result);
     const runTranslation = async () => {
       if (result.some((q) => !q.vi?.trim())) {
         if (c.translationEngine === "opus")
@@ -529,14 +573,10 @@ export class Pipeline {
             id,
           );
       }
-      if (hash(result) !== hash(store.episode(id).cues))
-        store.patch(id, {
-          cues: result,
-          revision: store.episode(id).revision + 1,
-        });
+      mergeTranslations(store, id, cues, result);
       const current = store.episode(id);
       if (
-        c.autoReview &&
+        review && c.autoReview &&
         !(
           current.quality?.status === "complete" &&
           current.quality.fingerprint === qualityFingerprint(store, current) &&
@@ -551,8 +591,9 @@ export class Pipeline {
           }),
         );
       }
-      return result;
+      return store.episode(id).cues;
     };
+    if (session) return runTranslation();
     return withProvider(c, signal, runTranslation, (m) => store.log(id, m));
   }
   filters(o, m, dub) {

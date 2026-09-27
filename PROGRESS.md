@@ -1,5 +1,32 @@
 # Bàn giao Việt Studio
 
+## Pipeline tăng dần — 2026-09-28
+
+Nhánh làm việc: `codex/streaming-pipeline`, dựa trên cấu hình đa nền tảng. Kiểm tra Git để xác nhận commit/push thực tế.
+
+### Đã triển khai
+- Giữ kiến trúc native HTTP/SQLite/frontend hiện có. Upload tự đọc/cache metadata; Whisper CPU nhận diện từng cửa sổ có checkpoint; producer ASR và bộ dịch theo thứ tự có thể chồng thời gian, tối đa một đoạn chờ. Giảm về tuần tự khi tài nguyên hạn chế.
+- Silero VAD tùy khả năng CLI/model; fallback chia theo khoảng lặng. ID và timestamp tuyệt đối của đoạn được giữ khi resume; chỉ thử lại đoạn ASR thất bại, bảo toàn các đoạn đã commit.
+- Dịch giữ provider session, tri thức/TM/ngữ cảnh; gộp theo ID/snapshot để không mất câu mới hoặc đè bản sửa. PATCH từng câu có kiểm tra xung đột sau khi đọc request body. Bảo vệ ID ổn định khi thêm/xóa câu.
+- Pause/resume giữ jobMode; checkpoint còn trên SQLite khi restart. Thêm số đo từng công đoạn và ETA sau đủ mẫu; FFmpeg xuất có progress thực. Chỉ xuất video khi người dùng chọn xuất, không render ngay sau dịch.
+- Timeline và phụ đề cập nhật dần; chỉnh nội dung/thời gian trong lúc ASR/dịch, khóa khi render. Kiểu font/cỡ/màu dùng cho preview/ASS; SRT không chứa style. Nút đóng bảng thuộc tính trên màn hình hẹp.
+- QA cảnh báo lặp nguồn/chồng thời gian/câu dài. Retry lỗi dịch chỉ tác động câu lỗi chưa sửa tay/chưa duyệt, không tự áp dụng đề xuất AI. Chặn xuất khi ASR chưa hoàn tất.
+- Khắc phục options cũ thiếu font defaults, OPUS cache được gộp vào store, kiểm tra ID OPUS, chờ tác vụ probe/worker khi shutdown để tránh ghi DB đã đóng.
+
+### Kiểm chứng
+- **37 test đã kiểm chứng** với DB riêng (36/36 toàn bộ, sau đó 10/10 nhóm streaming gồm test OPUS cache mới): checkpoint lỗi/resume, gộp khi người dùng sửa đồng thời, ID, scheduler giới hạn, tài nguyên, ETA, API PATCH/xung đột, legacy options và chặn render thiếu ASR; các test cũ vẫn đạt.
+- UI fixture 40 câu/provider giả lập: sửa khi dịch, pause tại 12/40 rồi resume hoàn tất; bản sửa vẫn còn. Font Verdana/cỡ 54 lưu được. Desktop 1366×768 và hẹp 760×800 không tràn toàn trang; nút đóng thuộc tính hoạt động. Không dùng DB/video thật.
+- FFmpeg 7.1 thật trên macOS Intel: video tổng hợp 95 giây → ba cửa sổ PCM, ranh giới 39/79/95 giây, tổng cắt 337 ms. Đây không phải benchmark ASR/LLM.
+- Scheduler giả lập 12 đoạn (40 ms ASR/60 ms dịch): chờ toàn bộ có câu đầu 550 ms/tổng 1218 ms; overlap 101 ms/800 ms. Không dùng số này để quảng cáo tốc độ model.
+- Kiểm tra cú pháp JavaScript, parse Python và `git diff --check` đạt.
+- Chi tiết cách chạy/giới hạn: `docs/STREAMING-PIPELINE.md`; benchmark scripts không tải model hoặc dùng dữ liệu người dùng.
+
+### Chưa kiểm chứng và việc tiếp theo
+- Chưa chạy Whisper/LLM thật trên video tiếng Trung hoặc xác minh GPU AMD; chưa chạy Windows/Mac ARM trong phiên này. Không chứng nhận chất lượng ngôn ngữ/timestamp từ test giả lập.
+- Whisper CLI nạp model mỗi cửa sổ; cần benchmark thời gian nạp và chất lượng ranh giới trước khi chọn persistent worker. OCR vẫn xử lý theo luồng cũ; render bị ngắt phải chạy lại.
+- Chưa có forced alignment/diarization; nhận diện câu bị bỏ sót và semantic QA vẫn có false positive/false negative. Đoạn ASR trống có cảnh báo cần nghe lại; không tự tuyên bố không có lời nói.
+- Dùng SRT/video mẫu được phép trên từng máy để đánh giá tốc độ và chất lượng thực trước vận hành dài; giữ checkpoint/dữ liệu cũ, không reset DB để thử.
+
 ## Cập nhật đa nền tảng — 2026-09-27
 
 Repository: https://github.com/phanan04/reupstudio. Nhánh triển khai: `codex/cross-platform-runtime`. Đọc phần này trước lịch sử laptop bên dưới. Kiểm tra `git status`/remote để biết thay đổi đã commit/push, không suy ra trạng thái Git từ tài liệu.

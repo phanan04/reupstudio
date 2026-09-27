@@ -10,6 +10,7 @@ export const defaults = {
   whisper: "whisper-cli",
   python: "python",
   whisperModel: "",
+  whisperVadModel: "./models/ggml-silero-v6.2.0.bin",
   llmUrl: "http://127.0.0.1:8081/v1",
   llmModel: "local",
   translationEngine: "llm",
@@ -53,6 +54,7 @@ export const optionDefaults = {
   burn: true,
   encoder: "libx264",
   review: true,
+  subtitleFont: "Arial", subtitleSize: 48, subtitleColor: "#FFFFFF",
 };
 export class Store {
   constructor(dir, initialSettings = {}) {
@@ -95,7 +97,7 @@ export class Store {
     return this.db
       .prepare("SELECT * FROM series WHERE id NOT IN (SELECT id FROM deleted_series) ORDER BY created DESC")
       .all()
-      .map((s) => ({ ...s, options: JSON.parse(s.options) }));
+      .map((s) => ({ ...s, options: { ...optionDefaults, ...JSON.parse(s.options) } }));
   }
   series(id) {
     return this.listSeries().find((s) => s.id === id);

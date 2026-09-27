@@ -90,3 +90,7 @@ GitHub Actions đã được cấu hình cho Node trên Windows, macOS Intel, ma
 Xem [AGENTS.md](AGENTS.md), [PROGRESS.md](PROGRESS.md), [kiến trúc](ARCHITECTURE.md), [dịch ngữ cảnh](TRANSLATION.md), [hướng dẫn sử dụng](docs/USER-GUIDE.md) và [Git/chuyển máy](docs/DEVELOPMENT.md).
 
 Nguồn native: [Whisper Homebrew](https://formulae.brew.sh/formula/whisper.cpp), [llama.cpp Homebrew](https://formulae.brew.sh/formula/llama.cpp), [FFmpeg Homebrew](https://formulae.brew.sh/formula/ffmpeg), [giới hạn PyTorch Mac Intel](https://discuss.pytorch.org/t/why-no-macosx-x86-64-build-after-torch-2-2-2-cp39-none-macosx-10-9-x86_64.whl/204546). Giấy phép công cụ/model nằm trong [hướng dẫn sử dụng](docs/USER-GUIDE.md#nguồn-và-giấy-phép).
+
+### Nhận diện và dịch theo tiến độ
+
+Video không có phụ đề dùng ASR theo đoạn, chuyển sang dịch và cập nhật timeline dần. Có tạm dừng/tiếp tục, chỉnh từng câu khi xử lý và kiểu chữ xem trước/xuất. Bấm xuất mới render video. Xem [hướng dẫn và giới hạn pipeline](docs/STREAMING-PIPELINE.md).

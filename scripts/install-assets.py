@@ -95,9 +95,11 @@ def voices():
             hf_file('rhasspy/piper-voices',f'vi/vi_VN/{speaker}/{quality}/{name}{suffix}',MODELS/'voices'/(name+suffix))
 def whisper_model():
     hf_file('ggerganov/whisper.cpp','ggml-small.bin',MODELS/'ggml-small.bin')
+def vad_model():
+    hf_file('ggml-org/whisper-vad','ggml-silero-v6.2.0.bin',MODELS/'ggml-silero-v6.2.0.bin')
 def translation_model():
     hf_file('Qwen/Qwen3-4B-GGUF','Qwen3-4B-Q4_K_M.gguf',MODELS/'Qwen3-4B-Q4_K_M.gguf')
-jobs=[voices,whisper_model,translation_model]
+jobs=[voices,whisper_model,vad_model,translation_model]
 if sys.platform == 'win32':
     jobs += [ffmpeg,
              lambda:zip_tool('ggml-org/llama.cpp',lambda n:'bin-win-vulkan-x64.zip' in n,TOOLS/'llama'),

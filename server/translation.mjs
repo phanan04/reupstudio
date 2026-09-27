@@ -1,5 +1,7 @@
 import { hash, validateCues } from "./core.mjs";
 import { chatJSON, providerIdentity } from "./ai-provider.mjs";
+import { recordStage } from "./streaming.mjs";
+import { mergeTranslations } from "./cue-merge.mjs";
 import {
   contextFor,
   reuseMemory,
@@ -107,6 +109,7 @@ export async function translateContext(
     result = reuseMemory(store, e, cues),
     size = Math.min(c.batchSize || 6, 8);
   for (let i = 0; i < result.length; i += size) {
+    const started = performance.now();
     if (signal.aborted) throw Error("Đã hủy");
     const batch = result.slice(i, i + size),
       missing = batch.filter((q) => !q.vi?.trim());
@@ -117,6 +120,7 @@ export async function translateContext(
     if (missing.length) {
       const knowledge = contextFor(store, e, batch);
       const data = {
+        corrections: e.translationRetry?.issues.filter(q => missing.some(c => c.id === q.id)) || [],
         style: o.style,
         seriesContext: o.context.slice(0, 4000),
         glossary: o.glossary.slice(0, 2500),
@@ -139,6 +143,7 @@ export async function translateContext(
       };
       const key = hash({
         task: "context-translation-v3",
+        retry: e.translationRetry?.nonce || null,
         provider: providerIdentity(c),
         series: e.seriesId,
         data,
@@ -157,20 +162,14 @@ export async function translateContext(
       for (const q of missing)
         q.vi = answer.translations.find((t) => t.id === q.id).vi.trim();
     }
-    const current = store.episode(id);
-    store.patch(id, {
-      cues: validateCues(result),
-      revision: current.revision + 1,
-      translationCheckpoint: {
-        done: result.filter((q) => q.vi).length,
-        total: result.length,
-        provider: providerIdentity(c),
-        updated: new Date().toISOString(),
-      },
-    });
+    const merged = mergeTranslations(store, id, cues, result, { provider: providerIdentity(c) });
+    const latest = store.episode(id), total = latest.asrManifest && !latest.asrManifest.complete ? null : latest.cues.length;
+    const done = merged.filter(q => q.vi?.trim()).length;
+    recordStage(store, id, "translation", done, total, performance.now() - started, total !== null && done === total);
+    for (let j = 0; j < result.length; j++) result[j] = merged.find(q => q.id === result[j].id) || result[j];
     progress(Math.min(i + size, result.length), result.length);
   }
-  return validateCues(result);
+  return store.episode(id).cues;
 }
 export const qualityFingerprint = (store, e) =>
   hash([
@@ -196,7 +195,10 @@ export function ruleIssues(cues, k) {
       suggestion: "",
       source: "rules",
     });
-  for (const q of cues) {
+  for (const [index, q] of cues.entries()) {
+    if (index && q.start < cues[index - 1].end - .25) add(q, "timing_overlap", "Câu chồng thời gian với câu trước; kiểm tra âm thanh trước khi chỉnh.");
+    if (q.end - q.start > 15) add(q, "timing_long", "Câu dài hơn 15 giây; cần kiểm tra mốc lời nói.");
+    if (index > 1 && q.text && q.text === cues[index - 1].text && q.text === cues[index - 2].text) add(q, "source_repetition", "Nguyên văn lặp ba lần; có thể ASR nhận nhầm âm nền.");
     if (!q.vi?.trim()) {
       add(q, "missing", "Thiếu bản dịch tiếng Việt.", "error");
       continue;
@@ -290,6 +292,7 @@ export async function reviewTranslation(
   const size = Math.min(c.batchSize || 3, 3);
   try {
     for (let i = 0; i < e.cues.length; i += size) {
+      const batchStarted = performance.now();
       const batch = e.cues.slice(i, i + size);
       const data = {
         context: store.series(e.seriesId).options.context.slice(0, 4000),
@@ -371,6 +374,7 @@ export async function reviewTranslation(
       );
       report.reviewed += batch.length;
       store.patch(id, { quality: report });
+      recordStage(store, id, "quality", report.reviewed, report.total, performance.now() - batchStarted, report.reviewed === report.total);
       progress(report.reviewed, report.total);
     }
     report.status = "complete";

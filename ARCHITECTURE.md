@@ -32,7 +32,7 @@ Mọi CLI dùng `spawn` với mảng tham số, `shell:false`, `windowsHide:true
 - OPUS là chế độ riêng: nhỏ, CPU, không tự nhận là context-aware. Chất lượng tên riêng/xưng hô cần biên tập.
 - OCR: ROI, lọc confidence, so khớp chuỗi và bỏ rung chữ qua nhiều khung. Độ chính xác thời gian giới hạn bởi tần số lấy mẫu.
 - TTS giữ mốc bắt đầu/kết thúc, dùng khoảng lặng và tăng tốc tối đa 1.35× mặc định. Câu chồng nhau hoặc không đủ chỗ sẽ báo lỗi để biên tập, không cắt âm tiết.
-- GPU mục tiêu RX 5600 XT: Vulkan cho LLM, AMF cho encode; Whisper Vulkan là adapter tùy chọn. Bản ASR cài sẵn CPU. LLM được mở sau ASR và đóng trước TTS/export. Không yêu cầu ROCm hoặc CUDA.
+- GPU mục tiêu RX 5600 XT: Vulkan cho LLM, AMF cho encode; Whisper Vulkan là adapter tùy chọn. Bản ASR cài sẵn CPU. Ở nhánh Whisper tăng dần, LLM dùng một phiên trong khi ASR CPU chạy từng đoạn; đóng phiên trước TTS/export. Không yêu cầu ROCm hoặc CUDA.
 - Pipeline đã chạy thật trên laptop Intel bằng OPUS + Piper + FFmpeg CPU; GPU AMD cần acceptance test trên máy đích.
 
 ## Giai đoạn 4 — Vận hành và bàn giao
@@ -57,3 +57,7 @@ Server/frontend/SQLite tiếp tục native trên localhost. `server/runtime.mjs`
 Ollama đã chạy được tái sử dụng; launcher chỉ quản lý tiến trình nó tạo. Python dependencies được sync theo fingerprint khi venv có sẵn. Windows tải binary portable như trước; macOS dùng native tools trên PATH và chỉ tải model chung. Không có npm runtime dependency hoặc bước frontend build.
 
 Ngoại lệ OPUS Mac Intel: Node gọi Docker CLI thay Python native, vẫn dùng `workers/translate_opus.py`, ID và checkpoint hiện có. Image CPU không chứa model hoặc dữ liệu riêng. Model mount read-only, thư mục tập mount read-write; suy luận không có mạng. Sau hủy/lỗi, dọn container theo UUID của tác vụ. App/SQLite không chuyển vào container. Xem README và docs/DEVELOPMENT.md cho cài đặt, lockfiles và Git workflow.
+
+## Pipeline tăng dần (28/09/2026)
+
+`streaming.mjs` điều phối ASR/dịch có giới hạn tài nguyên; `cue-merge.mjs` gộp checkpoint và chỉnh sửa đồng thời theo ID. Upload tự probe, dịch không tự render, pause/resume giữ chế độ. Chi tiết vận hành, phép đo và giới hạn tại [docs/STREAMING-PIPELINE.md](docs/STREAMING-PIPELINE.md).
